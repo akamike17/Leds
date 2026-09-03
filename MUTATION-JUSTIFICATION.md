@@ -21,17 +21,17 @@ El config actual (`stryker-config.json`) hace **mutation testing de alcance ampl
   sin señal semántica: mutante equivalente que sólo altera el conteo del bucle).
 - `Dispose`, `Equals`, `GetHashCode`, `ToString` ignorados como métodos.
 
-## Progresión (4 runs, misma fecha, .NET 8, xUnit)
+## Progresión (5 runs, misma fecha, .NET 8, xUnit)
 
-| Métrica | R1 | R2 +48 tests | R3 +17 golden/boundary | R4 +6 guardas Firmware |
-|---|---|---|---|---|
-| killed | 640 | 763 | 818 | **823** |
-| survived | 366 | 353 | 337 | **336** |
-| timeout | 63 | 49 | 7 | **7** |
-| no coverage | 464 | 244 | 242 | **238** |
-| **score (Stryker)** | **45.86 %** | **57.63 %** | **58.55 %** | **58.91 %** |
+| Métrica | R1 | R2 +48 tests | R3 +17 golden/boundary | R4 +6 guardas Firmware | R5 +9 border/upload |
+|---|---|---|---|---|---|
+| killed | 640 | 763 | 818 | 823 | **841** |
+| survived | 366 | 353 | 337 | 336 | **333** |
+| timeout | 63 | 49 | 7 | 7 | **4** |
+| no coverage | 464 | 244 | 242 | 238 | **231** |
+| **score (Stryker)** | **45.86 %** | **57.63 %** | **58.55 %** | **58.91 %** | **59.97 %** |
 
-El `timeout` cayó de 63 → 7 porque los tests de frontera acotaron los bucles.
+El `timeout` cayó de 63 → 4 porque los tests de frontera acotaron los bucles.
 
 ## Qué se corrigió (deficiencias REALES de pruebas, sin tocar producción)
 
@@ -57,31 +57,41 @@ reales de tests** (se corrigieron agregando/fortaleciendo pruebas):
    para tiempo negativo). → mató 5 mutantes (Equality 63→62, Logical 22→20) y redujo
    no-coverage de 242→238.
 
-**No se modificó ninguna línea de producción** para subir el score. Sólo se agregaron
-tests que demuestran el comportamiento exacto ya implementado.
+4. **Ronda final (R5) — contadores `Max` de `ProjectValidator` + guarda invariante de
+   `FrameIntervalMs` en upload** (`LastRoundBoundaryTests.cs`, 9 tests):
 
-### Guardas/contadores declarados equivalentes o defensivos (no tocados)
+   - **Contadores `Max`** (`MaxScenes=4096`, `MaxLayersPerScene=1024`,
+     `MaxEmbeddedAssets=4096`): el argumento previo de "prueba artificial costosa de 4096
+     elementos" era falso — el off-by-one `>`→`>=` se mata con **frontera exacta** (N
+     entidades triviales válidas vs N+1 inválidas) construidas en un `for`, sin asserts
+     frágiles ni código enorme. → mató los mutantes `Equality` de esos tres límites.
 
-- **`double.IsNaN(x) || double.IsInfinity(x)`** (Firmware L218/221): el mutante `||`→`&&`
-  es **matemáticamente equivalente** — `NaN` e `Infinity` son mutuamente excluyentes en
-  un `double` (no existe valor que sea ambos). No hay input que distinga `||` de `&&`.
-- **Contadores `Max` de 4096** (`MaxScenes`, `MaxLayersPerScene`, `MaxObjectsPerLayer`,
-  `MaxEmbeddedAssets`): son guardas de memoria defensivas. Matar el off-by-one
-  (`>=`→`>`) exigiría construir 4096 escenas/capas/objetos/assets en test — una prueba
-  artificial, costosa y frágil sin valor de detección real (un proyecto legítimo nunca
-  alcanza esos topes). Los límites que SÍ importan (MaxObjectsPerScene=1000,
-  MaxNameLength=256, MaxTextLength=4096, MaxSceneBytes=8MiB) ya están cubiertos con
-  frontera exacta.
+   - **Guarda invariante `FrameIntervalMs` (NaN/∞/≤0) en el camino REAL de `Firmware.Upload`**
+     y en `ChannelDisplayTarget.UploadAsync`: se demostró que la guarda es observable
+     (rechazo con `Ok=false` + error `FrameIntervalMs`, sin emitir frames de upload).
 
-## Clasificación final de los 337 supervivientes
+   **Defecto real de producción descubierto y corregido** (cambio mínimo): en
+   `Firmware.Upload` la invariante del paquete se validaba **DESPUÉS** de acceder a
+   `package.EstimatedBytes` (que serializa `FrameIntervalMs`). Un paquete con intervalo
+   no finito (NaN/∞) hacía que `RealWireSize()` lanzara `ArgumentException` (System.Text.Json
+   no serializa infinitos) en vez de devolver el fallo limpio de la guarda. Se reordenó
+   para validar la invariante **ANTES** del cálculo de tamaño — igual al orden ya usado por
+   `ChannelDisplayTarget.UploadAsync` (L108) y `SceneCompiler` (preflight L35). Sin cambio
+   de comportamiento para entradas válidas.
+
+**Se modificó UNA línea de producción** (`Firmware.cs`, reorden de dos validaciones en
+`Upload`) para corregir un defecto real (excepción no manejada → fallo limpio). El resto
+fueron tests que demuestran comportamiento ya implementado.
+
+## Clasificación final de los 333 supervivientes
 
 ### A. Equivalente / no matable (justificado, NO tocado)
 
 | Mutador | # | Justificación |
 |---|---|---|
-| `String` | 107 | Mensajes de error/diagnóstico; no forman contrato observable (matarlos exigiría asserts frágiles de string exacto) |
+| `String` | 108 | Mensajes de error/diagnóstico; no forman contrato observable (matarlos exigiría asserts frágiles de string exacto) |
 | `Statement` | 59 | `catch { }` best-effort, `return` defensivo de limpieza |
-| `Logical`/`Negate`/`Boolean` en `== null`/`!= null` | ~32 | guardas de nulidad estructuralmente equivalentes para los datos de entrada |
+| `Logical`/`Negate`/`Boolean` en `== null`/`!= null` y NaN/∞ | ~40 | guardas de nulidad estructuralmente equivalentes y `||`→`&&` sobre NaN/∞ matemáticamente equivalente (NaN y ∞ son mutuamente excluyentes en un `double`) |
 | `Remove checked` | 7 | quitar `checked` no cambia el resultado para inputs que no desbordan (el desborde ya está cubierto por otros tests) |
 | `Null coalescing (remove left)` | 10 | fallbacks `?? ""` / `?? valor` que rara vez difieren del observable |
 | `Block removal` / `Conditional` en `catch`/`??` | ~16 | ramas best-effort sin efecto observable |
@@ -90,31 +100,38 @@ tests que demuestran el comportamiento exacto ya implementado.
 
 | Mutador | # | Justificación |
 |---|---|---|
-| `Equality`/`Arithmetic` de `DeviceChannels` (timeout, `len`, reconnect) | 7 | ramas de socket/puerto serie real; requieren fallo de red/hardware inyectado (HIL). **NO VERIFICADO** en este entorno |
+| `Equality`/`Negate`/`Statement` de `DeviceChannels` (timeout, `len`, `ResetConnection`, `attempt>=1`, `IsCancellationRequested`) | 7 | ramas de socket/puerto serie real; requieren fallo de red/hardware inyectado (HIL). **NO VERIFICADO** en este entorno |
 | `DeviceDiscoveryService` fallos/colisión de serial con dispositivos físicos | ~parte de los 24 | **NO VERIFICADO** sin hardware |
 
 ### C. Supervivientes residuales de lógica (baja señal, documentados)
 
-- `ProjectValidator` (~24): mensajes de validación con `string` + límites de contadores
-  (`MaxScenes` 4096, `MaxLayersPerScene` 1024, `MaxObjectsPerLayer` 4096) que requerirían
-  construir objetos enormes en test (costoso, sin valor de detección real).
-- `Firmware`/`SimulatorTarget` (~20): guardas de `NaN`/`Infinity` en `PlaybackTick`
-  (ya probadas para `timeMs` negativo/cero; el mutante `&&`→`||` en la condición de
-  NaN es equivalente porque `NaN` y `Infinity` no coexisten en un mismo `double`).
+- `ProjectValidator` (~72 supervivientes, casi todos `String`): los contadores `Max`
+  (`MaxScenes`, `MaxLayersPerScene`, `MaxEmbeddedAssets`) **ya están matados** con
+  frontera exacta; lo que queda son los mensajes de error `String` y el único límite
+  `MaxObjectsPerLayer=4096` cuyo off-by-one NO es observable porque
+  `MaxObjectsPerScene=1000` (límite siempre vinculante) domina: ninguna capa puede
+  tener >4096 objetos sin que el total de escena ya exceda 1000. Es un límite
+  redundante por diseño, no un defecto.
+- `Firmware`/`SimulatorTarget` (~20): guardas `||`→`&&` de NaN/∞ matemáticamente
+  equivalentes (NaN e ∞ son mutuamente excluyentes). La guarda invariante de
+  `FrameIntervalMs` en upload ya se valida antes de `EstimatedBytes` (R5, fix de
+  producción).
 
 ## Conclusión (sin maquillar)
 
 - El **núcleo que define reproducción/deploy** (checksum, preflight, máquina de estados,
   framing, pipeline) está matado al 100% en sus ramas de comportamiento.
-- El score pasó de **45.86% → 58.91%** de forma **legítima**: +183 mutantes matados con
+- El score pasó de **45.86% → 59.97%** de forma **legítima**: +201 mutantes matados con
   **tests reales** (cobertura de servicio/controladores + golden de rasterización +
-  tests de frontera + guardas Firmware), **sin excluir nada ni tocar producción**.
-- **Mutation testing cerrado** en este punto: los 336 supervivientes restantes son
-  **equivalentes/defensivos** (mensajes de error `String`, `catch` best-effort `Statement`,
-  guardas `||`→`&&` de NaN/∞ matemáticamente equivalentes, contadores `Max` de 4096
-  defensivos) y **dependientes de hardware** (`DeviceChannels`). Forzarlos más requeriría
-  asserts frágiles de string, pruebas artificiales de 4096 elementos, o tocar producción —
-  las tres cosas descartadas por criterio.
+  tests de frontera + guardas Firmware + contadores Max + guarda invariante de upload),
+  y **UN defecto real de producción corregido** (excepción no manejada en
+  `Firmware.Upload` al serializar `FrameIntervalMs` no finito).
+- **Mutation testing cerrado** en este punto (fin de la última ronda, ins.txt): los 333
+  supervivientes restantes son **equivalentes/defensivos** (mensajes de error `String`,
+  `catch` best-effort `Statement`, guardas `||`→`&&` de NaN/∞ matemáticamente
+  equivalentes, límite redundante `MaxObjectsPerLayer`) y **dependientes de hardware**
+  (`DeviceChannels`). Forzarlos más requeriría asserts frágiles de string o cambio de
+  semántica de `SetPixel`/límites — descartado por criterio.
 
 ## Pendiente / NO VERIFICADO
 

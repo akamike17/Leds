@@ -124,14 +124,17 @@ public sealed class Firmware
             if (!_staging.TryGetValue(ticket, out var staged))
                 return (false, "Ticket de transferencia desconocido.");
 
-            // Verifica que el tamaño real del paquete coincide con el esperado en Prepare,
-            // y que el paquete respeta los invariantes (intervalo de frame válido).
-            if (package.EstimatedBytes != staged.ExpectedBytes)
-                return (false, $"Tamaño del paquete ({package.EstimatedBytes}B) no coincide con el esperado ({staged.ExpectedBytes}B).");
-
+            // Invariantes del paquete ANTES de calcular el tamaño wire: un FrameIntervalMs
+            // no finito (NaN/∞) no puede serializarse y `EstimatedBytes` lanzaría una
+            // ArgumentException en vez de devolver un fallo limpio. Mismo orden que
+            // ChannelDisplayTarget.UploadAsync y SceneCompiler (preflight).
             var invariantErr = ValidatePackageInvariants(package);
             if (invariantErr != null)
                 return (false, invariantErr);
+
+            // Verifica que el tamaño real del paquete coincide con el esperado en Prepare.
+            if (package.EstimatedBytes != staged.ExpectedBytes)
+                return (false, $"Tamaño del paquete ({package.EstimatedBytes}B) no coincide con el esperado ({staged.ExpectedBytes}B).");
 
             staged.Package = package;
             staged.ReceivedAt = DateTimeOffset.UtcNow;
