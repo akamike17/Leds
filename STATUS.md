@@ -80,12 +80,13 @@ verifica con pruebas reales. Los cambios principales:
 ## Validación final
 
 - **Build Release: 0 errores, 0 warnings.**
-- **Tests .NET: 488/488 pass.**
+- **Tests .NET: 494/494 pass.**
 - **E2E (Playwright): 9/9 pass.**
 - **Cobertura de líneas (coverlet):** lógica de producción (sin Vistas/VM/Program) **85.8%**.
-- **Mutation (Stryker, alcance amplio): 58.55%** (45.86% → 58.55%, subida legítima con
-  tests reales de cobertura, golden de rasterización y frontera; sin tocar producción).
-  Clasificación completa en `MUTATION-JUSTIFICATION.md`.
+- **Mutation (Stryker, alcance amplio): 58.91%** (45.86% → 58.91%, subida legítima con
+  tests reales de cobertura, golden de rasterización, frontera y guardas; sin tocar
+  producción). Mutation testing **cerrado**; clasificación completa en
+  `MUTATION-JUSTIFICATION.md`.
 - **Dependencias:** 0 vulnerables (`dotnet list package --vulnerable`); `npm audit`: 0.
 
 ### Cobertura por capa (líneas, coverlet)

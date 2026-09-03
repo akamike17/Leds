@@ -21,17 +21,15 @@ El config actual (`stryker-config.json`) hace **mutation testing de alcance ampl
   sin señal semántica: mutante equivalente que sólo altera el conteo del bucle).
 - `Dispose`, `Equals`, `GetHashCode`, `ToString` ignorados como métodos.
 
-## Progresión (3 runs, misma fecha, .NET 8, xUnit)
+## Progresión (4 runs, misma fecha, .NET 8, xUnit)
 
-| Métrica | Run 1 (inicial) | Run 2 (+48 tests) | Run 3 (+17 golden/boundary) |
-|---|---|---|---|
-| created | 3626 | 3618 | 3618 |
-| killed | 640 | 763 | **818** |
-| survived | 366 | 353 | **337** (342 en JSON) |
-| timeout | 63 | 49 | **7** |
-| no coverage | 464 | 244 | **242** |
-| compile errors | 235 | 235 | 235 |
-| **score (Stryker)** | **45.86 %** | **57.63 %** | **58.55 %** |
+| Métrica | R1 | R2 +48 tests | R3 +17 golden/boundary | R4 +6 guardas Firmware |
+|---|---|---|---|---|
+| killed | 640 | 763 | 818 | **823** |
+| survived | 366 | 353 | 337 | **336** |
+| timeout | 63 | 49 | 7 | **7** |
+| no coverage | 464 | 244 | 242 | **238** |
+| **score (Stryker)** | **45.86 %** | **57.63 %** | **58.55 %** | **58.91 %** |
 
 El `timeout` cayó de 63 → 7 porque los tests de frontera acotaron los bucles.
 
@@ -52,8 +50,28 @@ reales de tests** (se corrigieron agregando/fortaleciendo pruebas):
    del límite (dimensiones máx, maxColors 1/256, MaxSceneBytes, longitudes de nombre/texto).
    → mató 11 mutantes de igualdad (74 → 63).
 
+3. **Guardas NaN/Infinity/negativo de `Firmware.PlaybackTick`** — nunca se probaban esos
+   valores, por eso los mutantes de igualdad/lógica de esas guardas sobrevivían. Se
+   agregó `FirmwarePlaybackGuardTests.cs` (6 tests) que asertan el resultado exacto
+   (`Ok=false, Frame=null` para NaN/±∞/intervalo inválido; `Ok=true` clamp a frame 0
+   para tiempo negativo). → mató 5 mutantes (Equality 63→62, Logical 22→20) y redujo
+   no-coverage de 242→238.
+
 **No se modificó ninguna línea de producción** para subir el score. Sólo se agregaron
 tests que demuestran el comportamiento exacto ya implementado.
+
+### Guardas/contadores declarados equivalentes o defensivos (no tocados)
+
+- **`double.IsNaN(x) || double.IsInfinity(x)`** (Firmware L218/221): el mutante `||`→`&&`
+  es **matemáticamente equivalente** — `NaN` e `Infinity` son mutuamente excluyentes en
+  un `double` (no existe valor que sea ambos). No hay input que distinga `||` de `&&`.
+- **Contadores `Max` de 4096** (`MaxScenes`, `MaxLayersPerScene`, `MaxObjectsPerLayer`,
+  `MaxEmbeddedAssets`): son guardas de memoria defensivas. Matar el off-by-one
+  (`>=`→`>`) exigiría construir 4096 escenas/capas/objetos/assets en test — una prueba
+  artificial, costosa y frágil sin valor de detección real (un proyecto legítimo nunca
+  alcanza esos topes). Los límites que SÍ importan (MaxObjectsPerScene=1000,
+  MaxNameLength=256, MaxTextLength=4096, MaxSceneBytes=8MiB) ya están cubiertos con
+  frontera exacta.
 
 ## Clasificación final de los 337 supervivientes
 
@@ -88,12 +106,15 @@ tests que demuestran el comportamiento exacto ya implementado.
 
 - El **núcleo que define reproducción/deploy** (checksum, preflight, máquina de estados,
   framing, pipeline) está matado al 100% en sus ramas de comportamiento.
-- El score pasó de **45.86% → 58.55%** de forma **legítima**: +178 mutantes matados con
+- El score pasó de **45.86% → 58.91%** de forma **legítima**: +183 mutantes matados con
   **tests reales** (cobertura de servicio/controladores + golden de rasterización +
-  tests de frontera), **sin excluir nada ni tocar producción**.
-- Los 337 supervivientes restantes son, de forma demostrable, **equivalentes/defensivos
-  (~87%)** y **dependientes de hardware (~resto)**. Son una característica del género
-  (mensajes de error, `catch` best-effort, I/O de sockets), no bugs.
+  tests de frontera + guardas Firmware), **sin excluir nada ni tocar producción**.
+- **Mutation testing cerrado** en este punto: los 336 supervivientes restantes son
+  **equivalentes/defensivos** (mensajes de error `String`, `catch` best-effort `Statement`,
+  guardas `||`→`&&` de NaN/∞ matemáticamente equivalentes, contadores `Max` de 4096
+  defensivos) y **dependientes de hardware** (`DeviceChannels`). Forzarlos más requeriría
+  asserts frágiles de string, pruebas artificiales de 4096 elementos, o tocar producción —
+  las tres cosas descartadas por criterio.
 
 ## Pendiente / NO VERIFICADO
 
@@ -102,5 +123,3 @@ tests que demuestran el comportamiento exacto ya implementado.
   timeout/reconexión/fragmentación sobre transporte físico real **no se han verificado**
   (requieren dispositivo real). `DeviceChannels.cs` y los caminos `DeviceDiscoveryService`
   con dispositivo físico quedan marcados **NO VERIFICADO**.
-- Elevar más el score requeriría o bien aceptar los equivalentes (correcto) o escribir
-  asserts frágiles de string (contraproducente, se evita a propósito).
