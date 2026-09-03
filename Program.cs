@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -15,6 +17,16 @@ builder.Services.AddScoped<DSLetreros.Application.Services.LibraryService>();
 builder.Services.AddScoped<DSLetreros.Application.Services.EditingService>();
 builder.Services.AddScoped<DSLetreros.Application.Services.DeploymentService>();
 
+// Seguridad (spec 21): tope de tamaño de request y límites de formulario/kestrel.
+// Rechaza payloads gigantes antes de llegar al dominio (evita OOM en fuzz).
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>(
+    o => o.MaxRequestBodySize = 64 * 1024 * 1024); // 64 MiB
+builder.WebHost.ConfigureKestrel(k =>
+{
+    k.Limits.MaxRequestBodySize = 64 * 1024 * 1024;
+    k.Limits.MaxRequestBufferSize = 64 * 1024;
+});
+
 // Simulador local: IDisplayTarget en memoria (mismo contrato que el hardware).
 builder.Services.AddSingleton<DSLetreros.Domain.Deployment.SimulatorTarget>();
 
@@ -26,6 +38,10 @@ builder.Services.AddSingleton<DSLetreros.Domain.Deployment.Firmware>(sp =>
     new DSLetreros.Domain.Deployment.Firmware("FW-LOCAL-0001", "DSLetras Firmware", "1.0.0", 1, 64, 32));
 
 var app = builder.Build();
+
+// Observabilidad (spec 21): logger rotado a archivo, sin secretos.
+app.Services.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()
+    .AddProvider(new DSLetreros.Infrastructure.Logging.RollingFileLoggerProvider());
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

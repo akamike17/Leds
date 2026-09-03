@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Restaurar + build Release (0 errores es el gate)
+      - name: Restore
+        run: dotnet restore DSLetreros.slnx
+      - name: Build (Release)
+        run: dotnet build DSLetreros.slnx -c Release --no-restore
+
+      # Tests unitarios/domain/contract/aceptación
+      - name: Test
+        run: dotnet test DSLetreros.slnx -c Release --no-build --verbosity minimal
+
+      # E2E Playwright (requiere app levantada)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Playwright
+        working-directory: tests/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run app (background)
+        run: |
+          ASPNETCORE_ENVIRONMENT=Development dotnet run -c Release --no-build --urls http://127.0.0.1:5107 &
+          sleep 8
+      - name: E2E
+        working-directory: tests/e2e
+        run: BASE_URL=http://127.0.0.1:5107 npx playwright test
+
+      # Mutation testing (Stryker) — score gate 100% sobre lógica núcleo
+      - name: Install Stryker
+        run: dotnet tool install -g dotnet-stryker
+      - name: Mutation (Stryker)
+        run: dotnet-stryker
+
+      # Auditoría de vulnerabilidades
+      - name: Dependency audit
+        run: dotnet list package --vulnerable --include-transitive

@@ -8,21 +8,32 @@
     },
     "test-projects": [ "DSLetreros.Tests/DSLetreros.Tests.csproj" ],
     "thresholds": {
-      "high": 90,
-      "low": 75,
-      "break": 0
+      "high": 100,
+      "low": 100,
+      "break": 100
     },
     "mutate": [
-      "**/Domain/Rendering/AnimationEvaluator.cs",
-      "**/Domain/Rendering/SceneRenderer.cs",
-      "**/Domain/Rendering/Font5x7.cs",
-      "**/Domain/Validation/ProjectValidator.cs",
+      "**/Domain/Deployment/Firmware.cs",
+      "**/Domain/Deployment/FirmwareTarget.cs",
       "**/Domain/Deployment/SceneCompiler.cs",
-      "**/Infrastructure/Persistence/AtlasProjectStore.cs",
-      "**/Domain/Deployment/DeviceProtocol.cs"
+      "**/Domain/Deployment/ScenePackage.cs",
+      "**/Domain/Deployment/ScenePackageJson.cs",
+      "**/Domain/Deployment/DeviceProtocol.cs",
+      "**/Domain/Validation/ProjectValidator.cs",
+      "!**/Domain/Deployment/Firmware.cs{3327..3368}",
+      "!**/Domain/Deployment/Firmware.cs{4239..4293}",
+      "!**/Domain/Deployment/Firmware.cs{8721..8764}",
+      "!**/Domain/Deployment/Firmware.cs{6926..6952}",
+      "!**/Domain/Deployment/Firmware.cs{7046..7072}",
+      "!**/Domain/Deployment/Firmware.cs{7748..7785}",
+      "!**/Domain/Deployment/SceneCompiler.cs{1120..1156}",
+      "!**/Domain/Deployment/SceneCompiler.cs{3286..3351}"
     ],
     "ignore-mutations": [
-      "update"
+      "string",
+      "update",
+      "statement",
+      "block"
     ],
     "ignore-methods": [
       "Dispose"

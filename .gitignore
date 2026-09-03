@@ -16,6 +16,9 @@ tests/e2e/node_modules/
 # Runtime data (proyectos guardados son datos de usuario, no código)
 App_Data/
 
+# Runtime logs
+logs/
+
 # OS
 .DS_Store
 Thumbs.db

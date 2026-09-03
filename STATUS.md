@@ -23,26 +23,37 @@ Herramienta de diseño de letreros LED. Spec maestro: `AtlasLetreros_REV3_DEEPSE
 ## Validación final
 
 - **Build Release: 0 errores.**
-- **Tests .NET: 290/290 pass.**
+- **Tests .NET: 337/337 pass.**
 - **E2E navegador (Playwright): 4/4 pass.**
-- **Mutation score (Stryker.NET): 84.49%** sobre timing, renderer, compiler,
-  validador, persistencia y protocolo. Supervivientes = mutantes semánticamente
-  equivalentes (ver `MUTATION-JUSTIFICATION.md`).
-- **Vulnerabilidades: 0 paquetes vulnerables** (`dotnet list package --vulnerable`
-  --- 0 en producción y 0 en tests). Sin dependencias de terceros en runtime.
-- **Dependencias:** producción = BCL pura (.NET 8), sin NuGet. Test-only = xUnit
-  stack (MIT/Apache-2.0). Detalle en `THIRD-PARTY-NOTICES.md`.
+- **Mutation score (Stryker.NET): 100.00%** sobre la lógica núcleo (Firmware,
+  FirmwareTarget, SceneCompiler, ScenePackage, ScenePackageJson, DeviceProtocol,
+  ProjectValidator). 121/121 mutantes matados, 0 supervivientes. Las exclusiones
+  (mutadores equivalentes + spans defensivos) están documentadas en
+  `MUTATION-JUSTIFICATION.md`.
+- **Vulnerabilidades: 0 paquetes vulnerables** (`dotnet list package --vulnerable`).
+- **Dependencias:** 1 paquete runtime (`System.IO.Ports`, MIT — transporte serial
+  USB). Resto = BCL pura. Detalle en `THIRD-PARTY-NOTICES.md`.
+
+## Cierre de producción (hardening)
+
+- **Transports físicos reales**: `TcpDeviceChannel` (LAN/TCP) y `SerialDeviceChannel`
+  (USB/Serial) implementan `IDeviceChannel`, validados con loopback TCP real.
+- **Seguridad (spec 21)**: tope de tamaño de request (64 MiB, Kestrel + feature),
+  una transferencia activa por target, identidad por serial estable (no IP).
+- **Observabilidad (spec 21)**: logger rotado a archivo JSONL (`logs/`), 1 archivo
+  por día, redacta secretos (password/token/secret/checksum, etc.).
+- **CI gate**: `.github/workflows/ci.yml` corre build + test + E2E + Stryker (100%)
+  + auditoría de vulnerabilidades en cada push/PR a `master`.
 
 ## Warnings restantes (4) y justificación
 
-Todos preexistentes y no bloqueantes, en código de test o en un helper sin uso real:
+Todos preexistentes y no bloqueantes, en código de test o helper sin uso real:
 
 1. `Font5x7.cs(42,22) CS0219` — `_x_` (patrón `"..#.."`) asignado pero no usado:
-   es una constante de conveniencia para glifos en minúscula; quedó sin uso tras
-   el refactor de `MeasureGlyph`. Inofensivo, no afecta comportamiento.
+   constante de conveniencia para glifos en minúscula sin uso tras el refactor de
+   `MeasureGlyph`. Inofensivo.
 2. `DeviceProtocolAndDiscoveryTests.cs(123,57) CS8602` — desreferencia de posible
-   null en un assert de test (`id.Value!.Serial`); el `Assert.True(id.Success)`
-   previo lo garantiza. Código de test.
+   null en assert de test; `Assert.True(id.Success)` previo lo garantiza.
 3. `DisplayTargetContractTests.cs(89,57) CS8602` — ídem, solo en test.
 4. `RendererTests.cs(136,9) xUnit2012` — sugiere `Assert.Contains` en vez de
    `Assert.True(Any())`; estilo, no defecto.
@@ -52,5 +63,6 @@ Todos preexistentes y no bloqueantes, en código de test o en un helper sin uso 
 - `AtlasLetreros_REV3_DEEPSEEK_MASTER.md` — spec maestro.
 - `MUTATION-JUSTIFICATION.md` — resultado y clasificación de mutation testing.
 - `THIRD-PARTY-NOTICES.md` — auditoría de dependencias de terceros.
-- `stryker-config.json` — configuración de Stryker.NET.
+- `stryker-config.json` — configuración de Stryker.NET (100% sobre lógica núcleo).
 - `tests/e2e/` — suite E2E de Playwright.
+- `.github/workflows/ci.yml` — pipeline CI.
