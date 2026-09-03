@@ -1,0 +1,31 @@
+{
+  "stryker-config": {
+    "reporters": [ "progress", "html" ],
+    "project-info": {
+      "name": "github.com/DSLetras",
+      "module": "DSLetreros",
+      "version": "1.0.0"
+    },
+    "test-projects": [ "DSLetreros.Tests/DSLetreros.Tests.csproj" ],
+    "thresholds": {
+      "high": 90,
+      "low": 75,
+      "break": 0
+    },
+    "mutate": [
+      "**/Domain/Rendering/AnimationEvaluator.cs",
+      "**/Domain/Rendering/SceneRenderer.cs",
+      "**/Domain/Rendering/Font5x7.cs",
+      "**/Domain/Validation/ProjectValidator.cs",
+      "**/Domain/Deployment/SceneCompiler.cs",
+      "**/Infrastructure/Persistence/AtlasProjectStore.cs",
+      "**/Domain/Deployment/DeviceProtocol.cs"
+    ],
+    "ignore-mutations": [
+      "update"
+    ],
+    "ignore-methods": [
+      "Dispose"
+    ]
+  }
+}

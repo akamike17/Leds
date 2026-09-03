@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="DSLetreros.csproj" />
+  <Project Path="DSLetreros.Tests/DSLetreros.Tests.csproj" />
+</Solution>

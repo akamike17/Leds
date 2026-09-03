@@ -1,0 +1,12 @@
+{
+  "name": "dsletras-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "E2E tests for DSLetras editor (spec 20.9)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}

@@ -1,0 +1,53 @@
+@{ ViewData["Title"] = "Biblioteca"; }
+<div class="p-3">
+    <h1 class="h4">Mi biblioteca</h1>
+    <p class="text-muted">Dibujos e iconos personalizados guardados.</p>
+    <div id="library-drawings" class="row g-3">
+        <div class="col-12 text-muted">Cargando...</div>
+    </div>
+</div>
+
+@section Scripts {
+    <script type="module">
+        async function load() {
+            const res = await fetch('/Library/Drawings');
+            const data = await res.json();
+            const host = document.getElementById('library-drawings');
+            host.innerHTML = '';
+            if (!data.drawings || data.drawings.length === 0) {
+                host.innerHTML = '<div class="col-12 text-muted">No hay dibujos guardados todavía.</div>';
+                return;
+            }
+            for (const d of data.drawings) {
+                const col = document.createElement('div');
+                col.className = 'col-auto';
+                col.innerHTML = `
+                    <div class="card" style="width:120px">
+                        <div class="card-body p-2 text-center">
+                            <canvas width="${d.width}" height="${d.height}" style="width:80px;height:80px;image-rendering:pixelated;background:#000"></canvas>
+                            <div class="small mt-1 text-truncate">${d.name || 'Sin título'}</div>
+                            <button class="btn btn-sm btn-outline-danger mt-1" data-id="${d.id}">Borrar</button>
+                        </div>
+                    </div>`;
+                host.appendChild(col);
+                draw(col.querySelector('canvas'), d);
+                col.querySelector('button').addEventListener('click', async () => {
+                    await fetch('/Library/DeleteDrawing', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: d.id }),
+                    });
+                    load();
+                });
+            }
+        }
+        function draw(canvas, d) {
+            const ctx = canvas.getContext('2d');
+            const pal = d.palette && d.palette[0];
+            ctx.fillStyle = pal ? `#${pal.r.toString(16).padStart(2,'0')}${pal.g.toString(16).padStart(2,'0')}${pal.b.toString(16).padStart(2,'0')}` : '#fff';
+            for (let y = 0; y < d.height; y++)
+                for (let x = 0; x < d.width; x++)
+                    if (d.pixels[y * d.width + x]) ctx.fillRect(x, y, 1, 1);
+        }
+        load();
+    </script>
+}

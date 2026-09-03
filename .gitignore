@@ -1,0 +1,21 @@
+# Build artifacts
+bin/
+obj/
+*.user
+*.suo
+
+# Test results / Stryker
+StrykerOutput/
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+tests/e2e/.playwright/
+
+# Node
+tests/e2e/node_modules/
+
+# Runtime data (proyectos guardados son datos de usuario, no código)
+App_Data/
+
+# OS
+.DS_Store
+Thumbs.db

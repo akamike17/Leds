@@ -1,0 +1,28 @@
+@model NewProjectViewModel
+@{
+    ViewData["Title"] = "Nuevo proyecto";
+}
+
+<div class="p-3" style="max-width:480px">
+    <h1 class="h4 mb-3">Nuevo letrero LED</h1>
+    <form asp-action="Create" method="post">
+        <div class="mb-3">
+            <label class="form-label">Nombre</label>
+            <input class="form-control" asp-for="Name" />
+        </div>
+        <div class="row g-2 mb-3">
+            <div class="col">
+                <label class="form-label">Ancho (px)</label>
+                <input class="form-control" type="number" min="1" max="256" asp-for="Width" />
+            </div>
+            <div class="col">
+                <label class="form-label">Alto (px)</label>
+                <input class="form-control" type="number" min="1" max="256" asp-for="Height" />
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Crear y abrir editor</button>
+            <a class="btn btn-secondary" asp-action="Index">Cancelar</a>
+        </div>
+    </form>
+</div>
