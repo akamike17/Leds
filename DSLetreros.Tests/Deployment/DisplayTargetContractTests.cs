@@ -86,7 +86,7 @@ public class DisplayTargetContractTests
     {
         var target = new SimulatorTarget();
         var (pkg, _) = SceneCompiler.Compile(SampleScene(), Canvas)!;
-        var ticket = (await target.PrepareTransferAsync(pkg.EstimatedBytes)).Value!;
+        var ticket = (await target.PrepareTransferAsync(pkg!.EstimatedBytes)).Value!;
         await target.UploadAsync(ticket, pkg);
 
         var bogus = new Checksum("deadbeef");

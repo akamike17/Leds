@@ -106,7 +106,11 @@ public sealed class Firmware
             if (sceneBytes > _capabilities.MaxSceneBytes)
                 return (false, $"Escena excede MaxSceneBytes ({_capabilities.MaxSceneBytes}).", null);
 
-            _staging[ticket] = new StagedScene { ReceivedAt = DateTimeOffset.UtcNow };
+            _staging[ticket] = new StagedScene
+            {
+                ExpectedBytes = sceneBytes,
+                ReceivedAt = DateTimeOffset.UtcNow,
+            };
             _activeTransferTicket = ticket;
             return (true, null, ticket);
         }
@@ -120,11 +124,29 @@ public sealed class Firmware
             if (!_staging.TryGetValue(ticket, out var staged))
                 return (false, "Ticket de transferencia desconocido.");
 
+            // Verifica que el tamaño real del paquete coincide con el esperado en Prepare,
+            // y que el paquete respeta los invariantes (intervalo de frame válido).
+            if (package.EstimatedBytes != staged.ExpectedBytes)
+                return (false, $"Tamaño del paquete ({package.EstimatedBytes}B) no coincide con el esperado ({staged.ExpectedBytes}B).");
+
+            var invariantErr = ValidatePackageInvariants(package);
+            if (invariantErr != null)
+                return (false, invariantErr);
+
             staged.Package = package;
             staged.ReceivedAt = DateTimeOffset.UtcNow;
             _staging[ticket] = staged;
             return (true, null);
         }
+    }
+
+    /// <summary>Invariantes del paquete en upload: FrameInterval &gt; 0 y finito.</summary>
+    private static string? ValidatePackageInvariants(ScenePackage package)
+    {
+        var interval = package.FrameIntervalMs;
+        if (double.IsNaN(interval) || double.IsInfinity(interval) || interval <= 0.0)
+            return "FrameIntervalMs inválido (debe ser > 0 y finito).";
+        return null;
     }
 
     /// <summary>Verifica checksum del paquete en staging.</summary>
@@ -189,7 +211,23 @@ public sealed class Firmware
             if (frames.Count == 0)
                 return (true, null, null);
 
-            var idx = (int)(timeMs / _active.FrameIntervalMs) % frames.Count;
+            var interval = _active.FrameIntervalMs;
+
+            // Tiempo no finito/NaN o negativo, o intervalo inválido → no se puede indexar de
+            // forma segura; se devuelve el primer frame sin cálculo aritmético peligroso.
+            if (double.IsNaN(timeMs) || double.IsInfinity(timeMs))
+                return (false, "Tiempo de playback no finito.", null);
+
+            if (double.IsNaN(interval) || double.IsInfinity(interval) || interval <= 0.0)
+                return (false, "FrameIntervalMs inválido (debe ser > 0 y finito).", null);
+
+            // Tiempo negativo: se clampa a 0 (no puede produir índice negativo).
+            if (timeMs < 0)
+                timeMs = 0;
+
+            // idx = floor(timeMs / interval) % frames.Count, siempre en [0, frames.Count).
+            var idx = (int)(timeMs / interval) % frames.Count;
+            if (idx < 0) idx += frames.Count; // defensa ante cast/redondeo negativo
             return (true, null, frames[idx]);
         }
     }
@@ -253,6 +291,7 @@ public sealed class Firmware
 
     private sealed class StagedScene
     {
+        public long ExpectedBytes { get; set; }
         public ScenePackage? Package { get; set; }
         public Checksum ExpectedChecksum { get; set; }
         public bool Verified { get; set; }

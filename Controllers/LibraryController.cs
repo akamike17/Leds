@@ -23,9 +23,18 @@ public partial class LibraryController : Controller
     }
 
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public IActionResult SaveDrawing([FromBody] SaveDrawingRequest request)
     {
-        byte[] pixels = (request.Pixels ?? Array.Empty<int>()).Select(i => (byte)(i & 0xFF)).ToArray();
+        // Rechaza índices de píxel fuera de rango [0,255] en vez de truncarlos con & 0xFF.
+        var rawPixels = request.Pixels ?? Array.Empty<int>();
+        foreach (var p in rawPixels)
+        {
+            if (p < 0 || p > 255)
+                return Json(new { success = false, message = $"Índice de píxel fuera de rango: {p}." });
+        }
+        byte[] pixels = rawPixels.Select(i => (byte)i).ToArray();
+
         var (ok, message, id) = _library.SaveCustomDrawing(
             request.Name ?? "Dibujo", request.Width, request.Height, pixels,
             request.Palette?.Select(c => new Domain.ValueObjects.RgbColor(c.R, c.G, c.B)).ToList());
@@ -33,6 +42,7 @@ public partial class LibraryController : Controller
     }
 
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public IActionResult DeleteDrawing([FromBody] DeleteDrawingRequest request)
     {
         if (!Guid.TryParse(request.Id, out var guid))
@@ -59,6 +69,7 @@ public partial class LibraryController : Controller
 
     /// <summary>Importa una imagen rasterizada (RGBA) y devuelve un asset embebible.</summary>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public IActionResult RasterizeImage([FromBody] RasterizeRequest request)
     {
         if (request.Rgba == null || request.SrcWidth <= 0 || request.SrcHeight <= 0)

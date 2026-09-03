@@ -17,17 +17,21 @@ public class EditorController : Controller
         if (id == null || id == Guid.Empty)
             return RedirectToAction("New", "Projects");
 
-        // en su forma más simple, el editor carga desde el disco; el proyecto
-        // se materializa vía un endpoint JSON para evitar re-serializar aquí.
+        // el editor carga desde el disco vía un endpoint JSON (Editor/Load?id=).
         return View(new EditorViewModel { ProjectId = id.Value });
     }
 
-    [HttpGet]
-    public async Task<IActionResult> New([FromQuery] int width = 32, [FromQuery] int height = 16, [FromQuery] string? name = null)
+    /// <summary>
+    /// Crea y persiste un proyecto nuevo editando = operación mutable → POST.
+    /// Requiere antiforgery (JSON también se protege vía encabezado/cookie).
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> New([FromForm] int width = 32, [FromForm] int height = 16, [FromForm] string? name = null)
     {
+        width = Math.Clamp(width, 1, 256);
+        height = Math.Clamp(height, 1, 256);
         var project = _projects.CreateProject(name ?? "Sin título", width, height);
-        // Persiste de inmediato para que el editor (que carga por Load desde disco)
-        // pueda abrirlo y guardar/reabrir después.
         await _projects.SaveAsync(project);
         return RedirectToAction("Index", new { id = project.Id.Value });
     }
@@ -35,11 +39,10 @@ public class EditorController : Controller
     [HttpGet]
     public async Task<IActionResult> Load([FromQuery] Guid id, CancellationToken ct)
     {
-        var path = Path.Combine(_projects.ProjectsRoot, $"{id:N}.atlas");
-        if (!Directory.Exists(path))
+        if (id == Guid.Empty)
             return NotFound(new { success = false, message = "Proyecto no encontrado." });
 
-        var (result, project) = await _projects.OpenAsync(path, ct);
+        var (result, project) = await _projects.OpenByIdAsync(id, ct);
         if (!result.Success || project == null)
             return BadRequest(new { success = false, message = result.Message });
 
@@ -78,12 +81,12 @@ public class ProjectsController : Controller
         int w = Math.Clamp(model.Width, 1, 256);
         int h = Math.Clamp(model.Height, 1, 256);
         var project = _projects.CreateProject(model.Name, w, h);
-        // Persiste de inmediato para que el editor pueda cargarlo desde disco.
         await _projects.SaveAsync(project);
         return RedirectToAction("Index", "Editor", new { id = project.Id.Value });
     }
 
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Save([FromBody] Domain.Entities.Project project, CancellationToken ct)
     {
         if (project == null)
@@ -94,6 +97,7 @@ public class ProjectsController : Controller
     }
 
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Autosave([FromBody] Domain.Entities.Project project, CancellationToken ct)
     {
         if (project == null)
@@ -101,15 +105,5 @@ public class ProjectsController : Controller
 
         var result = await _projects.AutosaveAsync(project, ct);
         return Json(new { success = result.Success, message = result.Message, path = result.Path });
-    }
-
-    [HttpGet]
-    public async Task<IActionResult> Open([FromQuery] string path, CancellationToken ct)
-    {
-        var (result, project) = await _projects.OpenAsync(path, ct);
-        if (!result.Success || project == null)
-            return BadRequest(new { success = false, message = result.Message });
-
-        return Json(new { success = true, project = JsonSerializer.Serialize(project, Infrastructure.Persistence.AtlasJson.Options) });
     }
 }

@@ -45,11 +45,13 @@ public class CoreLogic100Tests
     }
 
     [Fact]
-    public void EstimatedBytes_accounts_frames_and_overhead()
+    public void EstimatedBytes_is_the_real_wire_size()
     {
         var pkg = SceneCompiler.Compile(Scene(), Canvas, frameIntervalMs: 1000)!.Package!;
-        // 2 frames, cada frame = 16*8*3 = 384 bytes; overhead = 2*16 + 256 = 288 → 768 + 288
-        Assert.Equal(2L * 384L + 2L * 16L + 256L, pkg.EstimatedBytes);
+        // EstimatedBytes = tamaño wire REAL (serialización JSON), no una estimación.
+        var real = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(pkg, ScenePackageJson.Options).LongLength;
+        Assert.Equal(real, pkg.EstimatedBytes);
+        Assert.True(pkg.EstimatedBytes > 0);
     }
 
     // ======================= Firmware =======================

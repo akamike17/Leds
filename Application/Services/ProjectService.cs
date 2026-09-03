@@ -14,8 +14,8 @@ public sealed class ProjectService
     {
         _store = store;
         // biblioteca local fuera de wwwroot; p.ej. %temp%/dsletras o App_Data
-        _projectsRoot = Path.Combine(env.ContentRootPath, "App_Data", "projects");
-        Directory.CreateDirectory(_projectsRoot);
+        _projectsRoot = ProjectPaths.CanonicalizeRoot(
+            Path.Combine(env.ContentRootPath, "App_Data", "projects"));
     }
 
     public string ProjectsRoot => _projectsRoot;
@@ -35,6 +35,10 @@ public sealed class ProjectService
 
     public ValidationResult Validate(Project project) => ProjectValidator.Validate(project);
 
+    /// <summary>Ruta de disco (canonicalizada) del proyecto por su id.</summary>
+    public string ResolveProjectPath(Guid projectId) =>
+        ProjectPaths.ResolveProjectDirectory(_projectsRoot, projectId);
+
     public async Task<PersistenceResult> SaveAsync(Project project, CancellationToken ct = default)
     {
         project.UpdatedAt = DateTimeOffset.UtcNow;
@@ -42,17 +46,31 @@ public sealed class ProjectService
         if (!validation.IsValid)
             return PersistenceResult.Fail("Proyecto inválido: " + string.Join("; ", validation.Errors));
 
-        var path = Path.Combine(_projectsRoot, $"{project.Id.Value:N}.atlas");
+        var path = ResolveProjectPath(project.Id.Value);
         return await _store.SaveAsync(project, path, ct);
     }
 
     /// <summary>Autosave separado (spec sección 16): escribe `&lt;id&gt;.atlas.autosave` sin tocar el original.</summary>
     public async Task<PersistenceResult> AutosaveAsync(Project project, CancellationToken ct = default)
     {
-        var path = Path.Combine(_projectsRoot, $"{project.Id.Value:N}.atlas");
+        var path = ResolveProjectPath(project.Id.Value);
         return await _store.AutosaveAsync(project, path, ct);
     }
 
+    /// <summary>Abre un proyecto por ProjectId (nunca por ruta arbitraria).</summary>
+    public async Task<(PersistenceResult, Project?)> OpenByIdAsync(Guid projectId, CancellationToken ct = default)
+    {
+        if (projectId == Guid.Empty)
+            return (PersistenceResult.Fail("ProjectId no puede ser vacío."), null);
+
+        var path = ResolveProjectPath(projectId);
+        if (!Directory.Exists(path))
+            return (PersistenceResult.Fail("El proyecto no existe."), null);
+
+        return await _store.OpenAsync(path, ct);
+    }
+
+    /// <summary>Abre un proyecto por ruta de disco ya resuelta (uso interno/tests).</summary>
     public async Task<(PersistenceResult, Project?)> OpenAsync(string path, CancellationToken ct = default)
         => await _store.OpenAsync(path, ct);
 

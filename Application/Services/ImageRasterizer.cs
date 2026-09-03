@@ -6,6 +6,15 @@ namespace DSLetreros.Application.Services;
 /// <summary>Rasterizador de imágenes: crop → nearest-neighbor scale → quantize → dither (sección 15).</summary>
 public static class ImageRasterizer
 {
+    /// <summary>Máximo de píxeles de la imagen fuente (srcWidth * srcHeight).</summary>
+    public const int MaxSourcePixels = 4096 * 4096;
+
+    /// <summary>Máximo de píxeles objetivo (targetWidth * targetHeight).</summary>
+    public const int MaxTargetPixels = 512 * 512;
+
+    /// <summary>Dimensión máxima de una sola arista del objetivo.</summary>
+    public const int MaxTargetDimension = 512;
+
     /// <summary>
     /// Convierte una imagen RGB (ya decodificada) en un PixelAsset para LED.
     /// Pipeline: crop opcional → escala nearest-neighbor → cuantización → dithering opcional.
@@ -16,20 +25,72 @@ public static class ImageRasterizer
         bool dither = true,
         int maxColors = 16)
     {
-        if (rgba == null || rgba.Length < srcWidth * srcHeight * 4)
-            return RasterResult.Fail("Buffer de imagen inválido.");
-        if (targetWidth <= 0 || targetHeight <= 0 || targetWidth > 512 || targetHeight > 512)
-            return RasterResult.Fail("Dimensiones objetivo fuera de rango (1..512).");
+        if (rgba == null)
+            return RasterResult.Fail("Buffer de imagen nulo.");
+
+        // Validar dimensiones fuente ANTES de multiplicar (evita overflow con checked).
+        if (srcWidth <= 0 || srcHeight <= 0)
+            return RasterResult.Fail("Dimensiones de origen inválidas (deben ser > 0).");
+
+        long sourcePixels;
+        try
+        {
+            sourcePixels = checked((long)srcWidth * srcHeight);
+        }
+        catch (OverflowException)
+        {
+            return RasterResult.Fail("Dimensiones de origen desbordan el cálculo de píxeles.");
+        }
+        if (sourcePixels > MaxSourcePixels)
+            return RasterResult.Fail($"Imagen de origen excede {MaxSourcePixels} píxeles.");
+
+        // Longitud RGBA requerida: ancho * alto * 4, en long checked.
+        long required;
+        try
+        {
+            required = checked(sourcePixels * 4L);
+        }
+        catch (OverflowException)
+        {
+            return RasterResult.Fail("Longitud RGBA desborda el cálculo.");
+        }
+        if (rgba.LongLength < required)
+            return RasterResult.Fail("Buffer de imagen inválido (longitud insuficiente).");
+
+        // Límites del objetivo.
+        if (targetWidth <= 0 || targetHeight <= 0)
+            return RasterResult.Fail("Dimensiones objetivo deben ser > 0.");
+        if (targetWidth > MaxTargetDimension || targetHeight > MaxTargetDimension)
+            return RasterResult.Fail($"Dimensiones objetivo fuera de rango (1..{MaxTargetDimension}).");
+
+        long targetPixels;
+        try
+        {
+            targetPixels = checked((long)targetWidth * targetHeight);
+        }
+        catch (OverflowException)
+        {
+            return RasterResult.Fail("Dimensiones objetivo desbordan el cálculo de píxeles.");
+        }
+        if (targetPixels > MaxTargetPixels)
+            return RasterResult.Fail($"Imagen objetivo excede {MaxTargetPixels} píxeles.");
+
+        // maxColors válido: 1..256.
+        if (maxColors < 1 || maxColors > 256)
+            return RasterResult.Fail("maxColors debe estar en el rango 1..256.");
+
+        int tw = targetWidth, th = targetHeight;
+        long n = targetPixels; // número de píxeles objetivo (long)
 
         // 1) nearest-neighbor scale (crop implícito por redimensión completa)
-        var scaled = new byte[targetWidth * targetHeight * 4];
-        for (int y = 0; y < targetHeight; y++)
-        for (int x = 0; x < targetWidth; x++)
+        var scaled = new byte[n * 4];
+        for (int y = 0; y < th; y++)
+        for (int x = 0; x < tw; x++)
         {
-            int sx = Math.Min((int)((double)x * srcWidth / targetWidth), srcWidth - 1);
-            int sy = Math.Min((int)((double)y * srcHeight / targetHeight), srcHeight - 1);
-            int si = (sy * srcWidth + sx) * 4;
-            int di = (y * targetWidth + x) * 4;
+            int sx = Math.Min((int)((double)x * srcWidth / tw), srcWidth - 1);
+            int sy = Math.Min((int)((double)y * srcHeight / th), srcHeight - 1);
+            long si = ((long)sy * srcWidth + sx) * 4;
+            long di = ((long)y * tw + x) * 4;
             scaled[di] = rgba[si];
             scaled[di + 1] = rgba[si + 1];
             scaled[di + 2] = rgba[si + 2];
@@ -37,26 +98,26 @@ public static class ImageRasterizer
         }
 
         // 2) quantize a una paleta (median cut simplificado → color directo)
-        var palette = BuildPalette(scaled, targetWidth * targetHeight, maxColors);
+        var palette = BuildPalette(scaled, (int)n, maxColors);
 
         // 3) mapear cada píxel al índice más cercano (+ dithering Floyd-Steinberg si aplica)
-        int n = targetWidth * targetHeight;
-        var indices = new byte[n];
+        int ni = (int)n;
+        var indices = new byte[ni];
         // buffers de error para dithering
-        var workR = new int[n];
-        var workG = new int[n];
-        var workB = new int[n];
-        for (int i = 0; i < n; i++)
+        var workR = new int[ni];
+        var workG = new int[ni];
+        var workB = new int[ni];
+        for (int i = 0; i < ni; i++)
         {
             workR[i] = scaled[i * 4];
             workG[i] = scaled[i * 4 + 1];
             workB[i] = scaled[i * 4 + 2];
         }
 
-        for (int y = 0; y < targetHeight; y++)
-        for (int x = 0; x < targetWidth; x++)
+        for (int y = 0; y < th; y++)
+        for (int x = 0; x < tw; x++)
         {
-            int idx = y * targetWidth + x;
+            int idx = y * tw + x;
             int r = Math.Clamp(workR[idx], 0, 255);
             int g = Math.Clamp(workG[idx], 0, 255);
             int b = Math.Clamp(workB[idx], 0, 255);
@@ -68,11 +129,11 @@ public static class ImageRasterizer
                 int er = r - palette[nearest].R;
                 int eg = g - palette[nearest].G;
                 int eb = b - palette[nearest].B;
-                Diffuse(workR, workG, workB, targetWidth, targetHeight, x, y, er, eg, eb);
+                Diffuse(workR, workG, workB, tw, th, x, y, er, eg, eb);
             }
         }
 
-        return RasterResult.Ok(targetWidth, targetHeight, indices, palette);
+        return RasterResult.Ok(tw, th, indices, palette);
     }
 
     private static void Diffuse(int[] r, int[] g, int[] b, int w, int h, int x, int y, int er, int eg, int eb)

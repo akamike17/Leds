@@ -1,5 +1,110 @@
-@{ ViewData["Title"] = "Ajustes"; }
+@{
+    ViewData["Title"] = "Ajustes";
+}
 <div class="p-3">
     <h1 class="h4">Ajustes</h1>
-    <p class="text-muted">Preferencias de la aplicación.</p>
+    <p class="text-muted">Configuración y detección de dispositivos (LAN / Serial).</p>
+
+    <h2 class="h6 mt-4">Canales LAN</h2>
+    <div id="lan-list" class="mb-2"></div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="add-lan">+ Añadir LAN</button>
+
+    <h2 class="h6 mt-4">Canales Serial</h2>
+    <div id="serial-list" class="mb-2"></div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="add-serial">+ Añadir Serial</button>
+
+    <div class="mt-4">
+        <button type="button" class="btn btn-primary" id="discover">Descubrir dispositivos</button>
+    </div>
+
+    <div id="status" class="mt-3 text-muted"></div>
+
+    <h2 class="h6 mt-4">Dispositivos</h2>
+    <div id="targets" class="list-group"></div>
 </div>
+
+@section Scripts {
+<script>
+(() => {
+    const lanList = document.getElementById('lan-list');
+    const serialList = document.getElementById('serial-list');
+    const status = document.getElementById('status');
+    const targets = document.getElementById('targets');
+
+    let lanRows = [];
+    let serialRows = [];
+
+    function addLan() {
+        const row = document.createElement('div');
+        row.className = 'input-group input-group-sm mb-1';
+        row.innerHTML = `
+            <input class="form-control lan-host" placeholder="host (ej. 10.0.0.9)">
+            <input class="form-control lan-port" type="number" placeholder="puerto" value="9000" style="max-width:110px">`;
+        lanList.appendChild(row);
+        lanRows.push(row);
+    }
+    function addSerial() {
+        const row = document.createElement('div');
+        row.className = 'input-group input-group-sm mb-1';
+        row.innerHTML = `
+            <input class="form-control ser-port" placeholder="puerto (ej. COM3)">
+            <input class="form-control ser-baud" type="number" placeholder="baud" value="115200" style="max-width:130px">`;
+        serialList.appendChild(row);
+        serialRows.push(row);
+    }
+
+    document.getElementById('add-lan').addEventListener('click', addLan);
+    document.getElementById('add-serial').addEventListener('click', addSerial);
+
+    async function loadTargets() {
+        const res = await fetch('/Settings/Targets');
+        const data = await res.json();
+        targets.innerHTML = '';
+        for (const t of data.targets) {
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center';
+            item.innerHTML = `<span><strong>${t.name}</strong> <span class="badge bg-secondary">${t.transport}</span>
+                <span class="text-muted ms-1">${t.serial}</span><br><small class="text-muted">${t.endpoint}</small></span>
+                <span class="badge ${t.online ? 'bg-success' : 'bg-warning'}">${t.status}</span>`;
+            targets.appendChild(item);
+        }
+    }
+
+    document.getElementById('discover').addEventListener('click', async () => {
+        status.textContent = 'Descubriendo…';
+        const payload = {
+            lan: [...lanRows].map(r => ({
+                host: r.querySelector('.lan-host').value,
+                port: parseInt(r.querySelector('.lan-port').value) || 0,
+            })).filter(x => x.host),
+            serial: [...serialRows].map(r => ({
+                portName: r.querySelector('.ser-port').value,
+                baudRate: parseInt(r.querySelector('.ser-baud').value) || 115200,
+            })).filter(x => x.portName),
+        };
+
+        const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+        const res = await fetch('/Settings/Discover', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token || '' },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.failures && data.failures.length) {
+            status.innerHTML = data.failures.map(f => `<div class="text-danger">${escapeHtml(f)}</div>`).join('');
+        } else {
+            status.textContent = 'Descubrimiento completado.';
+        }
+        await loadTargets();
+    });
+
+    function escapeHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    loadTargets();
+})();
+</script>
+}

@@ -22,12 +22,23 @@ public sealed class DeviceSummary
 /// dispositivo físico reaparece con la misma identidad aunque cambie de IP/puerto.
 /// El simulador siempre está registrado; los transports LAN/USB/Serial se descubren
 /// y registran bajo el MISMO contrato IDisplayTarget.
+///
+/// Concurrencia y colisiones (spec 21): el registro es thread-safe (lock) y una
+/// colisión de serial (dos dispositivos con el mismo serial) se resuelve de forma
+/// EXPLÍCITA: el segundo NO sobrescribe silenciosamente al primero. Los fallos de
+/// descubrimiento se registran sanitizados (sin stack traces ni secretos) en lugar de
+/// quedar en un catch vacío.
 /// </summary>
 public sealed class DeviceDiscoveryService
 {
+    private readonly object _gate = new();
     private readonly Dictionary<string, RegisteredDevice> _registered = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<DiscoveryFailure> _failures = new();
     private readonly SimulatorTarget _simulator;
     private readonly FirmwareTarget? _firmwareTarget;
+
+    /// <summary>Mensajes de fallo sanitizados del último DiscoverAsync (sin stack trace).</summary>
+    public IReadOnlyList<string> LastFailures { get { lock (_gate) return _failures.Select(f => f.Message).ToList(); } }
 
     public DeviceDiscoveryService(SimulatorTarget simulator, Firmware? firmware = null)
     {
@@ -41,15 +52,28 @@ public sealed class DeviceDiscoveryService
     }
 
     /// <summary>Registra el simulador local y un target descubierto por canal.</summary>
-    public void Register(IDisplayTarget target, string transport, string endpoint, string? serial = null)
+    public bool Register(IDisplayTarget target, string transport, string endpoint, string? serial = null)
     {
         // Clave de identidad = serial estable del dispositivo (NO el DeviceId local ni la IP).
-        // Si no se provee, se deriva del DeviceId como respaldo.
         var key = string.IsNullOrWhiteSpace(serial)
             ? target.Id.Value.ToString("N")
             : serial;
-        var entry = new RegisteredDevice(target, transport, endpoint, key);
-        _registered[key] = entry;
+
+        lock (_gate)
+        {
+            if (_registered.TryGetValue(key, out var existing))
+            {
+                // Colisión de serial: dos dispositivos físicos con el MISMO serial. No se
+                // sobrescribe silenciosamente; se conserva el original y se registra el fallo.
+                _failures.Add(new DiscoveryFailure(
+                    $"Colisión de serial '{key}': ya existe un dispositivo en {existing.Endpoint}; " +
+                    $"el nuevo en {endpoint} fue rechazado."));
+                return false;
+            }
+
+            _registered[key] = new RegisteredDevice(target, transport, endpoint, key);
+            return true;
+        }
     }
 
     /// <summary>Descubre targets vía los transports provistos (LAN y Serial).</summary>
@@ -61,19 +85,45 @@ public sealed class DeviceDiscoveryService
             {
                 var target = new ChannelDisplayTarget(channel);
                 var conn = await target.ConnectAsync(ct);
-                if (!conn.Success) continue;
+                if (!conn.Success)
+                {
+                    RecordFailure(channel, "conexión", conn.Error);
+                    continue;
+                }
 
                 var id = await target.GetIdentityAsync(ct);
-                if (id.Success && id.Value != null)
+                if (!id.Success || id.Value == null)
                 {
-                    // Identidad estable = serial del dispositivo (no el endpoint ni el DeviceId local).
-                    Register(target, channel.Transport, channel.Endpoint, id.Value.Serial);
+                    RecordFailure(channel, "identidad", id.Error);
+                    continue;
+                }
+
+                // Identidad estable = serial del dispositivo. Una colisión se informa explícitamente.
+                if (!Register(target, channel.Transport, channel.Endpoint, id.Value.Serial))
+                {
+                    // La colisión ya quedó registrada dentro de Register.
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Un canal no respondente no debe tumbar el discovery.
+                // Un canal no respondente no debe tumbar el discovery; se registra sanitizado.
+                RecordFailure(channel, "descubrimiento", ex.GetType().Name);
             }
+        }
+    }
+
+    /// <summary>Registra un fallo sanitizado: sin stack trace, sin secretos, endpoint acotado.</summary>
+    private void RecordFailure(IDeviceChannel channel, string stage, string detail)
+    {
+        var safeEndpoint = channel.Endpoint ?? "desconocido";
+        if (safeEndpoint.Length > 64) safeEndpoint = safeEndpoint[..64];
+        var safeDetail = detail ?? string.Empty;
+        if (safeDetail.Length > 200) safeDetail = safeDetail[..200];
+
+        lock (_gate)
+        {
+            _failures.Add(new DiscoveryFailure(
+                $"[{channel.Transport}] {safeEndpoint}: {stage} falló ({safeDetail})."));
         }
     }
 
@@ -83,7 +133,6 @@ public sealed class DeviceDiscoveryService
         var result = new List<DeviceSummary>();
 
         var simId = await _simulator.GetIdentityAsync(ct);
-        var simCaps = await _simulator.GetCapabilitiesAsync(ct);
         result.Add(new DeviceSummary
         {
             Id = _simulator.Id.Value.ToString("N"),
@@ -94,7 +143,13 @@ public sealed class DeviceDiscoveryService
             Status = (await _simulator.GetStatusAsync(ct)).Value,
         });
 
-        foreach (var entry in _registered.Values)
+        RegisteredDevice[] snapshot;
+        lock (_gate)
+        {
+            snapshot = _registered.Values.ToArray();
+        }
+
+        foreach (var entry in snapshot)
         {
             var status = (await entry.Target.GetStatusAsync(ct)).Value;
             var identity = await entry.Target.GetIdentityAsync(ct);
@@ -115,21 +170,29 @@ public sealed class DeviceDiscoveryService
     /// <summary>Resuelve un target por serial (identidad estable) o por DeviceId hex.</summary>
     public IDisplayTarget? Resolve(string idOrSerial)
     {
+        if (string.IsNullOrWhiteSpace(idOrSerial)) return null;
+
         var simId = _simulator.Id.Value.ToString("N");
-        if (string.Equals(simId, idOrSerial, StringComparison.OrdinalIgnoreCase))
+        var simSerial = simId[..8];
+        if (string.Equals(simId, idOrSerial, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(simSerial, idOrSerial, StringComparison.OrdinalIgnoreCase))
             return _simulator;
 
-        if (_registered.TryGetValue(idOrSerial, out var bySerial))
-            return bySerial.Target;
+        lock (_gate)
+        {
+            if (_registered.TryGetValue(idOrSerial, out var bySerial))
+                return bySerial.Target;
 
-        // Fallback: buscar por DeviceId hex.
-        if (_registered.Values.FirstOrDefault(e =>
-                string.Equals(e.Target.Id.Value.ToString("N"), idOrSerial, StringComparison.OrdinalIgnoreCase))
-            is { } byId)
-            return byId.Target;
+            // Fallback: buscar por DeviceId hex.
+            if (_registered.Values.FirstOrDefault(e =>
+                    string.Equals(e.Target.Id.Value.ToString("N"), idOrSerial, StringComparison.OrdinalIgnoreCase))
+                is { } byId)
+                return byId.Target;
+        }
 
         return null;
     }
 
     private sealed record RegisteredDevice(IDisplayTarget Target, string Transport, string Endpoint, string Serial);
+    private sealed record DiscoveryFailure(string Message);
 }

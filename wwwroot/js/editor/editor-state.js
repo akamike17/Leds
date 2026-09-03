@@ -23,6 +23,7 @@ export class EditorState {
         // estado de sesión de dibujo (una sesión continua = un object + un undo)
         this.drawingSession = null;
         this.shapeSession = null;
+        this._playback = null;
     }
 
     async loadProject(projectId) {
@@ -46,6 +47,8 @@ export class EditorState {
         canvas.style.width = (this.project.canvas.width * this.pixelScale) + 'px';
         canvas.style.height = (this.project.canvas.height * this.pixelScale) + 'px';
         this.renderer = new Renderer(canvas, this.ctx);
+        // Assets embebidos (assetId -> JSON) para iconos/imágenes (invariante 8).
+        this.renderer.embeddedAssets = this.project.embeddedAssets || {};
         this.installPointerHandlers();
     }
 
@@ -219,17 +222,19 @@ export class EditorState {
                 pixelData: [], bounds: { origin: { x: 0, y: 0 }, size: { width: 0, height: 0 } },
             },
             tool,
+            // Punto inicial del pointerdown SIEMPRE incluido (coordenadas ABSOLUTAS).
+            points: [[logical.x, logical.y]],
             minX: logical.x, minY: logical.y, maxX: logical.x, maxY: logical.y,
-            points: [],
         };
     }
 
     continueDrawing(logical) {
         const s = this.drawingSession;
-        s.points.push([logical.x - s.obj.position.x, logical.y - s.obj.position.y]);
+        // Guardar puntos ABSOLUTOS durante el stroke; en cierre se rebase contra minX/minY.
+        s.points.push([logical.x, logical.y]);
         s.minX = Math.min(s.minX, logical.x); s.maxX = Math.max(s.maxX, logical.x);
         s.minY = Math.min(s.minY, logical.y); s.maxY = Math.max(s.maxY, logical.y);
-        // redibujar incremental
+        // Previsualización incremental (clamp implícito al canvas vía toLogical).
         const ctx = this.ctx;
         ctx.fillStyle = this.pixelLayerColor(s);
         ctx.fillRect(logical.x, logical.y, 1, 1);
@@ -247,8 +252,14 @@ export class EditorState {
         const h = s.maxY - s.minY + 1;
         s.obj.position = { x: s.minX, y: s.minY };
         s.obj.size = { width: w, height: h };
+        // Rebase de puntos ABSOLUTOS contra minX/minY: correcto para dibujar hacia
+        // izquierda, arriba y diagonales (coordenadas locales siempre >= 0).
         const data = new Uint8Array(w * h);
-        for (const [dx, dy] of s.points) data[dy * w + dx] = 1;
+        for (const [ax, ay] of s.points) {
+            const dx = ax - s.minX;
+            const dy = ay - s.minY;
+            if (dx >= 0 && dy >= 0 && dx < w && dy < h) data[dy * w + dx] = 1;
+        }
         s.obj.pixelData = Array.from(data);
         s.obj.bounds = { origin: { x: 0, y: 0 }, size: { width: w, height: h } };
         this.layer().objects.push(s.obj);
@@ -429,7 +440,11 @@ export class EditorState {
         const name = window.prompt('Nombre del dibujo:', drawable.name || 'Dibujo');
         if (!name) return;
         const res = await fetch('/Library/SaveDrawing', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': window.__antiforgery?.token || '',
+            },
             body: JSON.stringify({
                 name, width, height,
                 pixels: Array.from(pixels),
@@ -453,7 +468,10 @@ export class EditorState {
     async save() {
         const res = await fetch('/Projects/Save', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': window.__antiforgery?.token || '',
+            },
             body: JSON.stringify(this.project),
         });
         const data = await res.json();
@@ -465,31 +483,77 @@ export class EditorState {
         }
     }
 
-    togglePlay() {
-        this.currentTime = 0;
+    // ----- playback (rAF + tiempo real de reloj, loop modes) -----
+
+    // Estado de reproducción centralizado (nunca Dataset como fuente de verdad).
+    startPlayback() {
         const scene = this.currentScene();
         if (!scene) return;
-        const btn = document.getElementById('btn-play');
+        if (this._playback) return;              // ya reproduciendo
         const dur = scene.duration ?? 5000;
-        const step = 50;
-        const renderLoop = () => {
-            this.currentTime += step;
-            if (this.currentTime >= dur) {
-                this.currentTime = 0;
-                this.render();
-                this.updateSceneTimeLabel();
-                return;
+        const loopMode = scene.loopMode ?? 'loop';
+        const startWall = performance.now();
+        const startTime = this.currentTime;
+
+        this._playback = { raf: null, startWall, startTime, dur, loopMode };
+
+        const tick = (now) => {
+            const p = this._playback;
+            if (!p) return;                       // detenido
+            const elapsed = now - p.startWall;
+            let t = p.startTime + elapsed;
+
+            if (t >= p.dur) {
+                if (p.loopMode === 'once' || p.loopMode === 0) {
+                    // Once: queda clavado en el final y se DETIENE de verdad.
+                    this.currentTime = p.dur;
+                    this.stopPlayback(false);
+                    this.render();
+                    this.updateSceneTimeLabel();
+                    return;
+                }
+                if (p.loopMode === 'pingpong' || p.loopMode === 2) {
+                    // PingPong: invertir dirección y rebotar dentro de [0, dur).
+                    const trips = Math.floor(t / p.dur);
+                    const rem = t % p.dur;
+                    this.currentTime = (trips % 2 === 0) ? rem : (p.dur - rem);
+                } else {
+                    // Loop (default): envolver.
+                    this.currentTime = t % p.dur;
+                }
+            } else {
+                this.currentTime = t;
             }
+
             this.render();
             this.updateSceneTimeLabel();
-            btn.dataset.timer = setTimeout(renderLoop, step);
+            p.raf = requestAnimationFrame(tick);
         };
-        if (btn.dataset.playing === 'true') {
-            clearTimeout(btn.dataset.timer);
-            btn.dataset.playing = 'false';
-        } else {
-            btn.dataset.playing = 'true';
-            renderLoop();
+
+        this._playback.raf = requestAnimationFrame(tick);
+    }
+
+    stopPlayback(reset = true) {
+        const p = this._playback;
+        if (p && p.raf) cancelAnimationFrame(p.raf);
+        this._playback = null;
+        document.getElementById('btn-play')?.classList.remove('playing');
+        document.getElementById('btn-play')?.setAttribute('aria-pressed', 'false');
+        if (reset) this.currentTime = 0;
+    }
+
+    togglePlay() {
+        if (this._playback) {
+            // stop REAL: cancela el rAF, limpia estado, no deja nada residual.
+            this.stopPlayback(false);
+            this.render();
+            this.updateSceneTimeLabel();
+            return;
         }
+        const btn = document.getElementById('btn-play');
+        btn?.classList.add('playing');
+        btn?.setAttribute('aria-pressed', 'true');
+        if (this.currentTime <= 0) this.currentTime = 0;
+        this.startPlayback();
     }
 }

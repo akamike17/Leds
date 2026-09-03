@@ -133,7 +133,7 @@ public class SceneRendererTests
         Assert.Equal(64, before.AllPixels().Count(p => p == RgbColor.Black));
 
         var during = SceneRenderer.Render(scene, TimeSpan.FromSeconds(3), new CanvasDefinition(8, 8));
-        Assert.True(during.AllPixels().Any(p => p == RgbColor.White));
+        Assert.Contains(RgbColor.White, during.AllPixels());
     }
 
     [Fact]

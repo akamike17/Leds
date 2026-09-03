@@ -13,8 +13,6 @@ public static class SceneRenderer
     /// <summary>Renderiza una escena a un framebuffer lógico en un instante t.</summary>
     public static FrameBuffer Render(Scene scene, TimeSpan time, CanvasDefinition canvas, IReadOnlyDictionary<string, string>? embeddedAssets = null)
     {
-        AnimationEvaluator.ViewportWidth = canvas.Width; // Marquee envuelve respecto del canvas
-
         var fb = new FrameBuffer(canvas.Width, canvas.Height);
         fb.Clear(RgbColor.Black);
         embeddedAssets ??= new Dictionary<string, string>();
@@ -26,7 +24,8 @@ public static class SceneRenderer
             foreach (var obj in layer.Objects)
             {
                 if (!obj.Visible) continue;
-                var state = AnimationEvaluator.Evaluate(obj, time);
+                // El viewport (canvas) viaja como argumento: Render es puro y thread-safe.
+                var state = AnimationEvaluator.Evaluate(obj, time, canvas.Width);
                 if (!state.Visible) continue;
                 RenderObject(fb, obj, time, state.Offset, state.BrightnessFactor, state.Clip, embeddedAssets);
             }
@@ -146,7 +145,10 @@ public static class SceneRenderer
 
     private static void DrawEllipse(FrameBuffer fb, int x, int y, int w, int h, RgbColor stroke, RgbColor fill, bool filled, PixelRect? clip)
     {
-        double cx = x + (w - 1) / 2.0, cy = y + (h - 1) / 2.0;
+        // i/j son coordenadas LOCALES del objeto. El centro se calcula en local
+        // (sin sumar x/y); x/y sólo se suman en el SetPixel/fillRect final.
+        double cx = (w - 1) / 2.0;
+        double cy = (h - 1) / 2.0;
         double rx = (w - 1) / 2.0, ry = (h - 1) / 2.0;
         for (int i = 0; i < w; i++)
         for (int j = 0; j < h; j++)

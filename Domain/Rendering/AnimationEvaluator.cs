@@ -45,35 +45,9 @@ public static class AnimationEvaluator
             [AnimationSpeedPreset.Fast] = TimeSpan.FromMilliseconds(500),
         };
 
-    /// <summary>Anchura lógica efectiva que usa Marquee para envolver el texto que no cabe.</summary>
-    public static int ViewportWidth { get; set; } = 32; // se ajusta desde el context de render
-
-    /// <summary>Resuelve el AnimationDefinition activo en un slot para un rango temporal dado.</summary>
-    public static AnimationDefinition? ResolveActive(
-        IEnumerable<AnimationDefinition> animations, TimeSpan t, TimeRange timing)
-    {
-        var list = animations?.Where(a => a != null).ToList() ?? new();
-        if (list.Count == 0) return null;
-
-        var local = t - timing.Start;
-        var dur = timing.Duration;
-        if (dur <= TimeSpan.Zero) return null;
-
-        // Entrada (primer 20% del rango si está definida), Salida (último 20%), Main (resto).
-        var entrance = list.Find(a => a.Slot == AnimationSlot.Entrance);
-        var exit = list.Find(a => a.Slot == AnimationSlot.Exit);
-        var main = list.Find(a => a.Slot == AnimationSlot.Main) ?? list[0];
-
-        var entranceEnd = TimeSpan.FromTicks(dur.Ticks / 5);
-        var exitStart = TimeSpan.FromTicks(dur.Ticks * 4 / 5);
-
-        if (entrance != null && local < entranceEnd) return entrance;
-        if (exit != null && local >= exitStart) return exit;
-        return main;
-    }
-
-    /// <summary>Evalúa el estado visual de un objeto en t.</summary>
-    public static AnimationState Evaluate(SceneObject obj, TimeSpan t)
+    /// <summary>Evalúa el estado visual de un objeto en t. El viewport (canvas) viaja como
+    /// argumento para que Render sea puro/thread-safe y dos canvases distintos no se pisen.</summary>
+    public static AnimationState Evaluate(SceneObject obj, TimeSpan t, int viewportWidth = 32)
     {
         if (!obj.Timing.Contains(t))
             return new AnimationState { Visible = false, Offset = new PixelPoint(0, 0), BrightnessFactor = 1.0 };
@@ -114,7 +88,7 @@ public static class AnimationEvaluator
 
             case AnimationKind.Marquee:
                 // texto/largo si no cabe: desplaza horizontalmente de forma envolvente
-                return MarqueeState(obj, local, def);
+                return MarqueeState(obj, local, def, viewportWidth);
 
             case AnimationKind.Wipe:
                 return WipeState(obj, local, def);
@@ -126,6 +100,30 @@ public static class AnimationEvaluator
             default:
                 return AnimationState.Default;
         }
+    }
+
+    /// <summary>Resuelve el AnimationDefinition activo en un slot para un rango temporal dado.</summary>
+    public static AnimationDefinition? ResolveActive(
+        IEnumerable<AnimationDefinition> animations, TimeSpan t, TimeRange timing)
+    {
+        var list = animations?.Where(a => a != null).ToList() ?? new();
+        if (list.Count == 0) return null;
+
+        var local = t - timing.Start;
+        var dur = timing.Duration;
+        if (dur <= TimeSpan.Zero) return null;
+
+        // Entrada (primer 20% del rango si está definida), Salida (último 20%), Main (resto).
+        var entrance = list.Find(a => a.Slot == AnimationSlot.Entrance);
+        var exit = list.Find(a => a.Slot == AnimationSlot.Exit);
+        var main = list.Find(a => a.Slot == AnimationSlot.Main) ?? list[0];
+
+        var entranceEnd = TimeSpan.FromTicks(dur.Ticks / 5);
+        var exitStart = TimeSpan.FromTicks(dur.Ticks * 4 / 5);
+
+        if (entrance != null && local < entranceEnd) return entrance;
+        if (exit != null && local >= exitStart) return exit;
+        return main;
     }
 
     private static AnimationState SlideState(SceneObject obj, TimeSpan local, AnimationDefinition def)
@@ -147,14 +145,14 @@ public static class AnimationEvaluator
         };
     }
 
-    private static AnimationState MarqueeState(SceneObject obj, TimeSpan local, AnimationDefinition def)
+    private static AnimationState MarqueeState(SceneObject obj, TimeSpan local, AnimationDefinition def, int viewportWidth)
     {
         var cycle = CycleLengths[def.SpeedPreset];
         double progress = (double)(local.Ticks % cycle.Ticks) / cycle.Ticks;
         var dir = def.Direction ?? AnimationDirection.Left;
         // El contenido se mueve en -x con envoltura respecto del viewport; el offset
         // replica un desplazamiento de `progress * (width+viewport)`.
-        int travel = obj.Size.Width + ViewportWidth;
+        int travel = obj.Size.Width + viewportWidth;
         int off = (int)Math.Round(progress * travel);
         if (dir == AnimationDirection.Right) off = travel - off;
         return new AnimationState

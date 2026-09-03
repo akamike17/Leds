@@ -39,7 +39,6 @@ public static class Font5x7
         }
 
         const string __ = ".....";
-        const string _x_ = "..#..";
 
         // ---- A-Z ----
         Add('A', "..#..", ".#.#.", "#...#", "#...#", "#####", "#...#", "#...#");

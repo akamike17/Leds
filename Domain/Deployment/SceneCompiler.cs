@@ -14,18 +14,51 @@ public static class SceneCompiler
     public const double DefaultFrameIntervalMs = 100.0;
     public const int MaxFrames = 100_000;
 
+    /// <summary>Dimensión máxima de canvas por lado (defensiva, evita OOM).</summary>
+    public const int MaxCanvasDimension = 512;
+
+    /// <summary>Tamaño máximo de memoria predicho para un paquete (bytes).</summary>
+    public const long MaxSceneBytes = 64L * 1024 * 1024; // 64 MiB
+
     /// <summary>Compila una escena completa a N frames. Devuelve null con mensaje si es inválida.</summary>
     public static (ScenePackage? Package, string? Error) Compile(
         Scene scene, CanvasDefinition canvas, double frameIntervalMs = DefaultFrameIntervalMs)
     {
         if (scene == null) return (null, "Escena nula.");
-        if (scene.Duration <= TimeSpan.Zero) return (null, "La escena debe tener duración > 0.");
 
+        // ---- Preflight (ANTES de renderizar/allocar): evita OOM y entradas inválidas ----
+        if (!double.IsFinite(frameIntervalMs) || frameIntervalMs <= 0)
+            return (null, "frameIntervalMs debe ser finito y > 0.");
+        if (frameIntervalMs < 1.0)
+            return (null, "frameIntervalMs debe ser >= 1 ms (demasiado pequeño).");
+
+        if (scene.Duration <= TimeSpan.Zero)
+            return (null, "La escena debe tener duración > 0.");
         var durationMs = scene.Duration.TotalMilliseconds;
-        int frameCount = (int)Math.Ceiling(durationMs / frameIntervalMs);
+        if (!double.IsFinite(durationMs) || durationMs <= 0)
+            return (null, "La duración de la escena debe ser finita y positiva.");
+
+        // Canvas dentro del target (dimensiones positivas) con límite razonable.
+        if (canvas.Width <= 0 || canvas.Height <= 0)
+            return (null, "Canvas inválido (dimensiones > 0).");
+        if (canvas.Width > MaxCanvasDimension || canvas.Height > MaxCanvasDimension)
+            return (null, $"Canvas demasiado grande ({canvas.Width}x{canvas.Height}); máximo {MaxCanvasDimension}x{MaxCanvasDimension}.");
+
+        // frameCount con multiplicaciones checked (durationMs / interval no desborda en double,
+        // pero el cast a long/int debe ser acotado antes de allocar).
+        double rawFrames = durationMs / frameIntervalMs;
+        if (!double.IsFinite(rawFrames) || rawFrames > MaxFrames)
+            return (null, $"Demasiados frames ({rawFrames:F0}); reduzca la duración o aumente el intervalo.");
+        int frameCount = (int)Math.Ceiling(rawFrames);
         if (frameCount <= 0) frameCount = 1;
         if (frameCount > MaxFrames)
             return (null, $"Demasiados frames ({frameCount}); reduzca la duración o aumente el intervalo.");
+
+        // Predicción de memoria/tamaño: w*h*3 bytes/frame, checked en long.
+        long bytesPerFrame = (long)canvas.Width * (long)canvas.Height * 3L;
+        long predictedBytes = bytesPerFrame * frameCount;
+        if (predictedBytes > MaxSceneBytes)
+            return (null, $"Paquete estimado ({predictedBytes}B) excede el límite de memoria ({MaxSceneBytes}B).");
 
         var frames = new List<CompiledFrame>(frameCount);
         for (int i = 0; i < frameCount; i++)

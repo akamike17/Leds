@@ -122,7 +122,7 @@ public class SceneCompilerTests
         l.Objects.Add(new TextObject { Text = "A", Color = RgbColor.White, Position = new PixelPoint(0,0), Timing = new TimeRange(TimeSpan.Zero, TimeSpan.FromSeconds(200)) });
         s.Layers.Add(l);
 
-        var (pkg, err) = SceneCompiler.Compile(s, Canvas, frameIntervalMs: 0.001);
+        var (pkg, err) = SceneCompiler.Compile(s, Canvas, frameIntervalMs: 1.0);
         Assert.Null(pkg);
         Assert.Contains("Demasiados frames", err);
     }

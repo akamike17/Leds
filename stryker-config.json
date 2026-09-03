@@ -1,6 +1,6 @@
 {
   "stryker-config": {
-    "reporters": [ "progress", "html" ],
+    "reporters": [ "progress", "html", "json" ],
     "project-info": {
       "name": "github.com/DSLetras",
       "module": "DSLetreros",
@@ -8,35 +8,29 @@
     },
     "test-projects": [ "DSLetreros.Tests/DSLetreros.Tests.csproj" ],
     "thresholds": {
-      "high": 100,
-      "low": 100,
-      "break": 100
+      "high": 70,
+      "low": 60,
+      "break": 0
     },
     "mutate": [
-      "**/Domain/Deployment/Firmware.cs",
-      "**/Domain/Deployment/FirmwareTarget.cs",
-      "**/Domain/Deployment/SceneCompiler.cs",
-      "**/Domain/Deployment/ScenePackage.cs",
-      "**/Domain/Deployment/ScenePackageJson.cs",
-      "**/Domain/Deployment/DeviceProtocol.cs",
-      "**/Domain/Validation/ProjectValidator.cs",
-      "!**/Domain/Deployment/Firmware.cs{3327..3368}",
-      "!**/Domain/Deployment/Firmware.cs{4239..4293}",
-      "!**/Domain/Deployment/Firmware.cs{8721..8764}",
-      "!**/Domain/Deployment/Firmware.cs{6926..6952}",
-      "!**/Domain/Deployment/Firmware.cs{7046..7072}",
-      "!**/Domain/Deployment/Firmware.cs{7748..7785}",
-      "!**/Domain/Deployment/SceneCompiler.cs{1120..1156}",
-      "!**/Domain/Deployment/SceneCompiler.cs{3286..3351}"
+      "**/Domain/Deployment/*.cs",
+      "**/Domain/Validation/*.cs",
+      "**/Application/Services/*.cs",
+      "**/Infrastructure/Persistence/*.cs",
+      "**/Infrastructure/Transport/*.cs",
+      "**/Infrastructure/Logging/*.cs",
+      "!**/Domain/Deployment/IDisplayTarget.cs",
+      "!**/Infrastructure/Persistence/AtlasJson.cs",
+      "!**/Application/Services/BuiltInIcons.cs"
     ],
     "ignore-mutations": [
-      "string",
-      "update",
-      "statement",
-      "block"
+      "update"
     ],
     "ignore-methods": [
-      "Dispose"
+      "Dispose",
+      "Equals",
+      "GetHashCode",
+      "ToString"
     ]
   }
 }

@@ -15,6 +15,7 @@ public static class AtlasJson
         Converters =
         {
             new TimeSpanConverter(),
+            new TimeRangeConverter(),
             new PixelPointConverter(),
             new PixelSizeConverter(),
             new PixelRectConverter(),
@@ -36,6 +37,28 @@ internal sealed class TimeSpanConverter : JsonConverter<TimeSpan>
         TimeSpan.FromMilliseconds(r.GetDouble());
     public override void Write(Utf8JsonWriter w, TimeSpan v, JsonSerializerOptions o) =>
         w.WriteNumberValue(v.TotalMilliseconds);
+}
+
+/// <summary>
+/// TimeRange persistente. Se serializa como start/end en ms (sin el `duration`
+/// derivado), y se lee reconstruyendo el rango (validando End ≥ Start).
+/// </summary>
+internal sealed class TimeRangeConverter : JsonConverter<TimeRange>
+{
+    public override TimeRange Read(ref Utf8JsonReader r, Type t, JsonSerializerOptions o)
+    {
+        using var doc = JsonDocument.ParseValue(ref r);
+        var start = TimeSpan.FromMilliseconds(doc.RootElement.GetProperty("start").GetDouble());
+        var end = TimeSpan.FromMilliseconds(doc.RootElement.GetProperty("end").GetDouble());
+        return new TimeRange(start, end);
+    }
+    public override void Write(Utf8JsonWriter w, TimeRange v, JsonSerializerOptions o)
+    {
+        w.WriteStartObject();
+        w.WriteNumber("start", v.Start.TotalMilliseconds);
+        w.WriteNumber("end", v.End.TotalMilliseconds);
+        w.WriteEndObject();
+    }
 }
 
 internal sealed class PixelPointConverter : JsonConverter<PixelPoint>

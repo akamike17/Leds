@@ -12,6 +12,9 @@ public sealed class RenderContext
 /// <summary>Verdad visual: buffer de píxeles lógicos. Misma entrada = mismos píxeles (invariante 4).</summary>
 public sealed class FrameBuffer
 {
+    /// <summary>Máximo de píxeles admitido (defensivo: evita OOM).</summary>
+    public const int MaxTotalPixels = 512 * 512;
+
     private readonly RgbColor[] _pixels;
 
     public int Width { get; }
@@ -21,9 +24,25 @@ public sealed class FrameBuffer
     {
         if (width <= 0 || height <= 0)
             throw new ArgumentOutOfRangeException(nameof(width), "Buffer con dimensiones positivas.");
+
+        // checked/long: rechaza desbordamiento de width*height ANTES de allocar.
+        long total;
+        try
+        {
+            total = checked((long)width * (long)height);
+        }
+        catch (OverflowException)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width), "Dimensiones que desbordan el tamaño del buffer.");
+        }
+
+        if (total > MaxTotalPixels)
+            throw new ArgumentOutOfRangeException(nameof(width),
+                $"El buffer excede el máximo de {MaxTotalPixels} píxeles ({total}).");
+
         Width = width;
         Height = height;
-        _pixels = new RgbColor[width * height];
+        _pixels = new RgbColor[total];
     }
 
     public RgbColor GetPixel(int x, int y)

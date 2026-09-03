@@ -10,12 +10,30 @@ builder.Services.AddControllersWithViews().AddJsonOptions(o =>
     o.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
 });
 
+// Antiforgery (CSRF) para operaciones mutables, incluido JSON fetch:
+// validamos el token vía encabezado `RequestVerificationToken` (a la vez que
+// el campo de formulario estándar para los <form> MVC normales).
+builder.Services.AddAntiforgery(o =>
+{
+    o.HeaderName = "RequestVerificationToken";
+});
+
 // DSLetras: domain/infrastructure services
 builder.Services.AddSingleton<DSLetreros.Infrastructure.Persistence.AtlasProjectStore>();
 builder.Services.AddScoped<DSLetreros.Application.Services.ProjectService>();
 builder.Services.AddScoped<DSLetreros.Application.Services.LibraryService>();
 builder.Services.AddScoped<DSLetreros.Application.Services.EditingService>();
 builder.Services.AddScoped<DSLetreros.Application.Services.DeploymentService>();
+
+// Seguridad (spec 21): DSLetras es una herramienta LOCAL. Por defecto el
+// servidor se enlaza SOLO a loopback (127.0.0.1), de forma que el control de
+// dispositivos jamás quede expuesto a interfaces externas por accidente. Un
+// operador puede deliberadamente enlazar a una interfaz concreta vía
+// ASPNETCORE_URLS, pero el valor por defecto (sin config) es loopback.
+if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
+{
+    builder.WebHost.UseUrls("http://127.0.0.1:5099");
+}
 
 // Seguridad (spec 21): tope de tamaño de request y límites de formulario/kestrel.
 // Rechaza payloads gigantes antes de llegar al dominio (evita OOM en fuzz).

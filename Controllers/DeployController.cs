@@ -48,24 +48,30 @@ public class DeployController : Controller
 
     /// <summary>Envía la primera escena del proyecto al target indicado (pipeline completo).</summary>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Send([FromBody] SendRequest request, CancellationToken ct)
     {
-        if (request == null || request.ProjectId == Guid.Empty)
+        // ProjectId llega como string (hex "N" o "D" guid del cliente JS); se valida
+        // y parsea aquí de forma defensiva.
+        if (request == null || string.IsNullOrWhiteSpace(request.ProjectId))
+            return BadRequest(new { success = false, message = "Proyecto no especificado." });
+
+        if (!Guid.TryParseExact(request.ProjectId, "N", out var projectId) &&
+            !Guid.TryParseExact(request.ProjectId, "D", out projectId))
+            return BadRequest(new { success = false, message = "Identificador de proyecto inválido." });
+
+        if (projectId == Guid.Empty)
             return BadRequest(new { success = false, message = "Proyecto no especificado." });
 
         // Resolver target por serial (identidad estable) o por DeviceId hex.
-        var target = request.TargetId != null
+        var target = !string.IsNullOrWhiteSpace(request.TargetId)
             ? _discovery.Resolve(request.TargetId)
             : _simulator;
 
         if (target == null)
             return BadRequest(new { success = false, message = "Target no encontrado." });
 
-        var path = Path.Combine(_projects.ProjectsRoot, $"{request.ProjectId:N}.atlas");
-        if (!Directory.Exists(path))
-            return NotFound(new { success = false, message = "Proyecto no encontrado." });
-
-        var (open, project) = await _projects.OpenAsync(path, ct);
+        var (open, project) = await _projects.OpenByIdAsync(projectId, ct);
         if (!open.Success || project == null || project.Scenes.Count == 0)
             return BadRequest(new { success = false, message = "Proyecto sin escenas." });
 
@@ -95,7 +101,8 @@ public class DeployController : Controller
 
 public sealed class SendRequest
 {
-    public Guid ProjectId { get; set; }
+    /// <summary>Identificador del proyecto (hex "N" o "D"; se parsea en el controlador).</summary>
+    public string ProjectId { get; set; } = string.Empty;
 
     /// <summary>Serial (identidad estable) o DeviceId hex del target. Nulo = simulador.</summary>
     public string? TargetId { get; set; }

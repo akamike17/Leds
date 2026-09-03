@@ -4,6 +4,9 @@ obj/
 *.user
 *.suo
 
+# Visual Studio (configuración local del usuario, nunca trackear)
+.vs/
+
 # Test results / Stryker
 StrykerOutput/
 tests/e2e/test-results/

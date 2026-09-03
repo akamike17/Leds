@@ -1,63 +1,86 @@
-# Mutation Testing — Resultado final y excepciones documentadas
+# Mutación (Stryker.NET) — resultado y clasificación
 
-`dotnet-stryker` sobre la lógica núcleo. **Score final: 100.00%** (matados 121,
-supervivientes 0, timeout 0, errores 0, sin NoCoverage).
+## Alcance (honesto)
 
-## Alcance de mutación (mutate)
+El cierre anterior reportaba "100% mutation sobre lógica núcleo" con un config que
+sólo mutaba 7 archivos de `Domain/Deployment` y excluía, por byte-offset frágil,
+spans individuales además de mutadores enteros (`string`, `statement`, `block`). Ese
+número no describía el alcance real del proyecto.
 
-Lógica de negocio real — no render de píxeles (equivalente) ni datos de fuente:
+El config actual (`stryker-config.json`) hace **mutation testing de alcance amplio**:
 
-- `Domain/Deployment/Firmware.cs`
-- `Domain/Deployment/FirmwareTarget.cs`
-- `Domain/Deployment/SceneCompiler.cs`
-- `Domain/Deployment/ScenePackage.cs`
-- `Domain/Deployment/ScenePackageJson.cs`
-- `Domain/Deployment/DeviceProtocol.cs`
-- `Domain/Validation/ProjectValidator.cs`
+- **Mutate**: `Domain/Deployment/*`, `Domain/Validation/*`, `Application/Services/*`,
+  `Infrastructure/Persistence/*`, `Infrastructure/Transport/*`,
+  `Infrastructure/Logging/*`.
+- **Exclusiones únicamente semánticas y documentadas** (no por offset):
+  - `IDisplayTarget.cs` (interfaz, sin cuerpo ejecutable),
+  - `AtlasJson.cs` (converters de serialización declarativos),
+  - `BuiltInIcons.cs` (catálogo de iconos = **datos píxel-art embebidos**, no lógica;
+    el propio criterio de la auditoría: "no mutar generated/vendor/font data").
+- **Mutador excluido**: `update` (post-incremento `++→--` ⇒ artefacto de timeout
+  sin señal semántica: mutante equivalente que sólo altera el conteo del bucle).
+- `Dispose`, `Equals`, `GetHashCode`, `ToString` ignorados como métodos.
 
-## Excepciones documentadas (lo único excluido del 100%)
+## Resultado real (run 2026-09-03, .NET 8, xUnit)
 
-### 1. Mutadores equivalentes/defensivos (globales, via `ignore-mutations`)
+```
+created:       3626
+tested:        1069
+killed:         640
+survived:       366
+timeout:         63
+no coverage:    464
+ignored:        350  (block/method/mutate/type filters — mecanismos de Stryker)
+compile errors: 235
+score:        45.86 %  (killed / tested, sobre el alcance amplio)
+```
 
-- `string` — mensajes de error/diagnóstico; el mutante `"...→""` no cambia
-  comportamiento observable.
-- `update` — `++→--` en un `for`: bucle infinito del mutante ("Timeout"), no
-  comportamiento; es la guarda del bucle.
-- `statement`, `block` — eliminación de side-effects defensivos (`w.Write` de
-  checksum, `Directory.CreateDirectory`, `SafeDeleteDir`, `staging.Remove`,
-  `?.Clear()`). Equivalentes o best-effort.
+Nota: `ignored` incluye los mutantes retirados por el propio filtro de Stryker
+(`Removed by block already covered filter`, `method filter`, `mutate filter`,
+`mutation type filter`). Son mecánica de la herramienta, no exclusiones manuales.
 
-### 2. Spans defensivos/inaccesibles (via `mutate` con `!file.cs{a..b}`)
+## Clasificación de supervivientes / sin cobertura (por archivo)
 
-Líneas concretas que el modelo no puede alcanzar (código defensivo o redundante,
-sin cambio funcional):
+### Sin cobertura (464) — código no alcanzado por ninguna prueba
+| Archivo | # | Naturaleza |
+|---|---|---|
+| `BuiltInIcons.cs` | 109 | **Datos** (se excluye del mutate) |
+| `DeviceChannels.cs` (Tcp/Serial) | 67 | I/O de red real (sockets/puertos serie); probado vía HIL loopback pero ramas de reinicio/timeout requieren hardware |
+| `ImageRasterizer.cs` | 55 | Dithering/cuantización; ramas de paleta grande |
+| `ProjectValidator.cs` | 42 | Mensajes de error de validaciones defensivas |
+| `ProjectService.cs` | 39 | Enumeración de proyectos/UI (rápido de cubrir en una próxima iteración) |
+| `RollingFileLogger.cs` | 32 | Rotación por tamaño y archivos (I/O) |
+| `AtlasProjectStore.cs` | 25 | Ramas de migración futura + limpieza best-effort |
+| resto | ~95 | boundary checks varios |
 
-| Línea | Motivo |
-|-------|--------|
-| Firmware.cs `{3327..3368}` | safe-boot `_active==null && _lastKnownGood!=null`: inalcanzable (lastKnownGood sólo se fija cuando active no era null; placeholder para reboot persistido futuro) |
-| Firmware.cs `{4239..4293}` | `new StagedScene { ReceivedAt }` en `Prepare`: redundante, `Upload` lo re-fija |
-| Firmware.cs `{8721..8764}` | `now - ReceivedAt > TransferTimeout`: frontera wall-clock no determinista |
-| Firmware.cs `{6926..6952}` / `{7046..7072}` | `return (true, null, null)` de `PlaybackTick` (active vacío / frames vacíos): el de frames=0 es inalcanzable vía Compile (siempre ≥1 frame) |
-| Firmware.cs `{7748..7785}` | `while(!cts.IsCancellationRequested)`: bucle de playback autónomo en background |
-| SceneCompiler.cs `{1120..1156}` | `frameCount <= 0` clamp: inalcanzable (duración>0 ⇒ frameCount≥1) |
-| SceneCompiler.cs `{3286..3351}` | guard `MaxSceneBytes > 0 && EstimatedBytes > MaxSceneBytes`: frontera exacta |
+### Supervivientes (366) — mutante sobrevive = no matado por ninguna prueba
+| Archivo | # | Naturaleza predominante |
+|---|---|---|
+| `ProjectValidator.cs` | 75 | `string` de mensajes de error (diagnóstico), `&&`/`||` en guardas defensivas equivalentes |
+| `AtlasProjectStore.cs` | 58 | manejo best-effort (`catch { }`), `SafeDeleteDir`, nombres sanitizados |
+| `ImageRasterizer.cs` | 48 | aritmética de píxeles (redondeo/dither) matemáticamente equivalente |
+| `Firmware.cs` / `SimulatorTarget.cs` | 42 | guardas defensivas, `lock`, estados equivalentes |
+| `DeviceChannels.cs` / `DeviceDiscoveryService.cs` | 49 | paths de timeout/reconexión (requieren fallo de red inyectado) |
+| resto | ~94 | condiciones de borde equivalentes |
 
-## Progresión del score
+## Conclusión (sin maquillar)
 
-| Ronda | Score |
-|-------|-------|
-| inicial (render completo) | 70.42% |
-| +fases/timing/compiler | 72.78% |
-| +render formas/iconos | 78.00% |
-| +golden fuente +refactors | 83.97% |
-| +timing aritmético | 84.55% |
-| **final (lógica núcleo + excepciones)** | **100.00%** |
+- **El núcleo que SÍ define el comportamiento reproducción/deploy** (`Firmware`,
+  `SimulatorTarget`, `SceneCompiler`, `ScenePackage`, `DeviceProtocol`, el pipeline
+  `DeploymentService`) **sí se mató en su mayoría** (los 640 killed incluyen toda la
+  lógica de checksum, preflight, máquina de estados y framing).
+- El `45.86 %` sobre el **alcance amplio** refleja honestamente que `Application`/
+  `Persistence`/`Transport`/`Logging` tienen **superficie de test menor** que el
+  núcleo. Los 366 supervivientes y 464 sin-cobertura son, en su mayoría, **mensajes
+  de diagnóstico, aritmética de píxeles equivalente y ramas de I/O defensivo** — no
+  bugs — pero **no se documentan como "aceptables" sin más**: están enumerados arriba
+  por archivo para que el siguiente esfuerzo de cobertura se apunte a `ProjectService`,
+  `ProjectValidator` (mensajes) e `ImageRasterizer` (dithering), que son los de mayor
+  retorno.
+- No se usa ningún `break` threshold falso: `break: 0` (Stryker no rompe el build por
+  umbral; el score se reporta y se fiducia en CI).
 
-## Refactors que eliminaron mutantes equivalentes
-
-1. `SceneRenderer.Scale`: `>= 1.0`/`<= 0.0` → `Math.Clamp` + `== 0.0`/`== 1.0`.
-2. `SceneRenderer.DrawLine`: `while(true)` Bresenham → `for` acotado.
-3. `Font5x7.MeasureGlyph`: ternario redundante → `Width + Spacing`.
-
-Nota: `FrameBuffer.SetPixel` NO se modificó; conserva su semántica original de
-descartar silenciosamente coordenadas fuera de rango.
+Queda pendiente (honesto): elevar el score de forma real ampliando tests sobre
+`ProjectService`, `ProjectValidator` (caminos de error), `ImageRasterizer`
+(cuantización/dither) y el transporte (inyección de fallos de socket) — no cambiando
+el config para inflar el número.

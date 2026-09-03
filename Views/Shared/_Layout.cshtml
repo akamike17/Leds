@@ -20,7 +20,7 @@
                 </button>
                 <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
                     <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item"><a class="nav-link" asp-controller="Editor" asp-action="New">Nuevo</a></li>
+                        <li class="nav-item"><a class="nav-link" asp-controller="Projects" asp-action="New">Nuevo</a></li>
                         <li class="nav-item"><a class="nav-link" asp-controller="Projects" asp-action="Index">Proyectos</a></li>
                         <li class="nav-item"><a class="nav-link" asp-controller="Library" asp-action="Index">Biblioteca</a></li>
                         <li class="nav-item"><a class="nav-link" asp-controller="Devices" asp-action="Index">Dispositivos</a></li>
@@ -37,8 +37,19 @@
     </div>
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
-    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="~/js/site.js" asp-append-version="true"></script>
-    @await RenderSectionAsync("Scripts", required: false)
-</body>
-</html>
+        <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+        <script src="~/js/site.js" asp-append-version="true"></script>
+
+        @* Token antiforgery para proteger operaciones JSON (fetch POST/PUT/DELETE). *@
+        <form id="__af" style="display:none">
+            @Html.AntiForgeryToken()
+        </form>
+        <script>
+            window.__antiforgery = {
+                token: document.querySelector('#__af input[name="__RequestVerificationToken"]')?.value || ''
+            };
+        </script>
+
+        @await RenderSectionAsync("Scripts", required: false)
+    </body>
+    </html>

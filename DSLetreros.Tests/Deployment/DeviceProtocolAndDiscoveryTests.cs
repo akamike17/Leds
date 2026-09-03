@@ -120,7 +120,7 @@ public class DeviceProtocolAndDiscoveryTests
         var target = make(channel);
         var (pkg, _) = SceneCompiler.Compile(SampleScene(), Canvas)!;
         await target.ConnectAsync();
-        var ticket = (await target.PrepareTransferAsync(pkg.EstimatedBytes)).Value!;
+        var ticket = (await target.PrepareTransferAsync(pkg!.EstimatedBytes)).Value!;
         await target.UploadAsync(ticket, pkg);
 
         var ver = await target.VerifyAsync(ticket, new Checksum("ffffffff"));
@@ -209,8 +209,14 @@ public sealed class FakeDeviceChannel : IDeviceChannel
         var (op, flags, payload) = DeviceProtocol.Unwrap(frame);
         switch (op)
         {
-            case DeviceProtocol.OpHello or DeviceProtocol.OpStop or DeviceProtocol.OpStatus:
+            case DeviceProtocol.OpHello or DeviceProtocol.OpStop:
                 return Task.FromResult(DeviceProtocol.Ack());
+
+            case DeviceProtocol.OpStatus:
+                // El target espera un opcode OpStatus con payload (state JSON).
+                return Task.FromResult(DeviceProtocol.Wrap(
+                    DeviceProtocol.OpStatus, 0,
+                    Encoding.UTF8.GetBytes(JsonSerializer.Serialize(DeviceStatus.Online))));
 
             case DeviceProtocol.OpIdentity:
                 var id = new DeviceIdentity

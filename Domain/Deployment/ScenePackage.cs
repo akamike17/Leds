@@ -28,23 +28,45 @@ public sealed class ScenePackage
 
     public int FrameCount => Frames.Count;
 
-    /// <summary>Bytes serializados aproximados (para MaxSceneBytes).</summary>
-    public long EstimatedBytes =>
-        Frames.Sum(f => (long)f.Pixels.Length) + Frames.Count * 16L + 256L;
+    /// <summary>
+    /// Tamaño REAL del payload a transmitir (serialización JSON del paquete con
+    /// <see cref="ScenePackageJson.Options"/>), no una estimación. Se usa para el
+    /// preflight Prepare y para validar contra MaxSceneBytes. No se serializa
+    /// (es derivado; se excluye para evitar recursión y payload redundante).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public long EstimatedBytes => RealWireSize();
+
+    /// <summary>Calcula el tamaño wire real serializando el paquete (JSON para el cable).</summary>
+    public long RealWireSize()
+    {
+        var bytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(this, ScenePackageJson.Options);
+        return bytes.LongLength;
+    }
 
     /// <summary>Calcula y sella el checksum del paquete.</summary>
     public Checksum ComputeChecksum()
     {
         using var ms = new System.IO.MemoryStream();
         using var w = new System.IO.BinaryWriter(ms);
-        // NOTA: no incluimos SceneId (GUID aleatorio) — el checksum representa el
-        // CONTENIDO compilado, para determinismo y equivalencia R5.
-        w.Write((int)DurationMs);
+        // Cubre TODO campo que cambia la reproducción: ProtocolVersion,
+        // DurationMs (representación SIN pérdida: bits double), LoopMode, Canvas,
+        // FrameIntervalMs, FrameCount y, por frame, TimeMs + Pixels.
+        // NO incluye SceneId (GUID aleatorio) ni SceneName (metadata) — el checksum
+        // representa el CONTENIDO compilado (determinismo y equivalencia R5).
+        w.Write(ProtocolVersion);
+        w.Write(DurationMs);                             // double: sin pérdida de precisión
         w.Write((int)LoopMode);
         w.Write(Canvas.Width);
         w.Write(Canvas.Height);
+        w.Write(FrameIntervalMs);                        // double
+        w.Write(Frames.Count);
         foreach (var f in Frames)
+        {
+            w.Write(f.TimeMs);                           // double: timing por frame
+            w.Write(f.Pixels.Length);
             w.Write(f.Pixels);
+        }
         unchecked
         {
             var bytes = ms.ToArray();

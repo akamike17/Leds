@@ -7,10 +7,14 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <Compile Remove="DSLetreros.Tests\**\*.cs" />
-      <Content Remove="DSLetreros.Tests\**\*" />
-      <None Remove="DSLetreros.Tests\**\*" />
-    </ItemGroup>
+          <Compile Remove="DSLetreros.Tests\**\*.cs" />
+          <Content Remove="DSLetreros.Tests\**\*" />
+          <None Remove="DSLetreros.Tests\**\*" />
+        </ItemGroup>
+
+        <ItemGroup>
+          <InternalsVisibleTo Include="DSLetreros.Tests" />
+        </ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="System.IO.Ports" Version="8.0.0" />

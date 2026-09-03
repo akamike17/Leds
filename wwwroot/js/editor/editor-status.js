@@ -103,7 +103,10 @@ export class StatusHud {
         try {
             const res = await fetch('/Deploy/Send', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': window.__antiforgery?.token || '',
+                },
                 body: JSON.stringify({ projectId, targetId }),
             });
             const data = await res.json();

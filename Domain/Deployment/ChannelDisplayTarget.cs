@@ -13,6 +13,10 @@ namespace DSLetreros.Domain.Deployment;
 /// Upload transaccional (spec 18): los bytes se envían a un staging temporal en el
 /// dispositivo; la activación es atómica y cualquier fallo conserva la escena activa
 /// anterior (LastKnownGood). El checksum verifica la integridad antes de activar.
+///
+/// Validación de respuestas (spec 18/21): NUNCA se trata un opcode distinto de
+/// Error/Ack como éxito. Cada operación espera un opcode concreto; un opcode distinto
+/// (fuera de orden, truncado o versiones incompatibles) se devuelve como fallo.
 /// </summary>
 public class ChannelDisplayTarget : IDisplayTarget
 {
@@ -38,9 +42,7 @@ public class ChannelDisplayTarget : IDisplayTarget
         try
         {
             var resp = await _channel.RequestAsync(DeviceProtocol.Hello(Id), ct);
-            var (op, _, payload) = DeviceProtocol.Unwrap(resp);
-            if (op == DeviceProtocol.OpError)
-                return TargetResult.Fail(Encoding.UTF8.GetString(payload));
+            ExpectAck(resp);
             _status = DeviceStatus.Online;
             return TargetResult.Ok();
         }
@@ -56,9 +58,7 @@ public class ChannelDisplayTarget : IDisplayTarget
         try
         {
             var resp = await _channel.RequestAsync(DeviceProtocol.Wrap(DeviceProtocol.OpIdentity, 0, Array.Empty<byte>()), ct);
-            var (op, _, payload) = DeviceProtocol.Unwrap(resp);
-            if (op == DeviceProtocol.OpError)
-                return TargetResult<DeviceIdentity>.Fail(Encoding.UTF8.GetString(payload));
+            var payload = ExpectOpcode(resp, DeviceProtocol.OpIdentity);
             var id = JsonSerializer.Deserialize<DeviceIdentity>(Encoding.UTF8.GetString(payload));
             _identity = id ?? throw new ProtocolException("Identidad vacía.");
             return TargetResult<DeviceIdentity>.Ok(_identity!);
@@ -74,9 +74,7 @@ public class ChannelDisplayTarget : IDisplayTarget
         try
         {
             var resp = await _channel.RequestAsync(DeviceProtocol.Wrap(DeviceProtocol.OpCapabilities, 0, Array.Empty<byte>()), ct);
-            var (op, _, payload) = DeviceProtocol.Unwrap(resp);
-            if (op == DeviceProtocol.OpError)
-                return TargetResult<DeviceCapabilities>.Fail(Encoding.UTF8.GetString(payload));
+            var payload = ExpectOpcode(resp, DeviceProtocol.OpCapabilities);
             var caps = JsonSerializer.Deserialize<DeviceCapabilities>(Encoding.UTF8.GetString(payload));
             _capabilities = caps ?? throw new ProtocolException("Capacidades vacías.");
             return TargetResult<DeviceCapabilities>.Ok(_capabilities!);
@@ -93,9 +91,7 @@ public class ChannelDisplayTarget : IDisplayTarget
         {
             var ticket = Guid.NewGuid().ToString("N");
             var resp = await _channel.RequestAsync(DeviceProtocol.Prepare(ticket, sceneBytes), ct);
-            var (op, _, payload) = DeviceProtocol.Unwrap(resp);
-            if (op == DeviceProtocol.OpError)
-                return TargetResult<string>.Fail(Encoding.UTF8.GetString(payload));
+            ExpectAck(resp);
             return TargetResult<string>.Ok(ticket);
         }
         catch (Exception ex)
@@ -108,6 +104,11 @@ public class ChannelDisplayTarget : IDisplayTarget
     {
         try
         {
+            // Rechazo local temprano por invariante del paquete (FrameInterval > 0 finito).
+            var interval = package.FrameIntervalMs;
+            if (double.IsNaN(interval) || double.IsInfinity(interval) || interval <= 0.0)
+                return TargetResult.Fail("FrameIntervalMs inválido (debe ser > 0 y finito).");
+
             var payload = JsonSerializer.SerializeToUtf8Bytes(package, ScenePackageJson.Options);
             // Fragmentación defensiva en bloques de 64 KB (FlagFinal en la última parte).
             const int chunk = 64 * 1024;
@@ -118,9 +119,7 @@ public class ChannelDisplayTarget : IDisplayTarget
                 var flags = last ? DeviceProtocol.FlagFinal : (byte)0;
                 var frame = DeviceProtocol.Upload(transferTicket, payload.AsSpan(off, count).ToArray(), flags);
                 var resp = await _channel.RequestAsync(frame, ct);
-                var (op, _, body) = DeviceProtocol.Unwrap(resp);
-                if (op == DeviceProtocol.OpError)
-                    return TargetResult.Fail(Encoding.UTF8.GetString(body));
+                ExpectAck(resp);
             }
             return TargetResult.Ok();
         }
@@ -135,9 +134,7 @@ public class ChannelDisplayTarget : IDisplayTarget
         try
         {
             var resp = await _channel.RequestAsync(DeviceProtocol.Verify(transferTicket, expected), ct);
-            var (op, _, payload) = DeviceProtocol.Unwrap(resp);
-            if (op == DeviceProtocol.OpError)
-                return TargetResult.Fail(Encoding.UTF8.GetString(payload));
+            ExpectAck(resp);
             return TargetResult.Ok();
         }
         catch (Exception ex)
@@ -151,9 +148,7 @@ public class ChannelDisplayTarget : IDisplayTarget
         try
         {
             var resp = await _channel.RequestAsync(DeviceProtocol.Activate(transferTicket), ct);
-            var (op, _, payload) = DeviceProtocol.Unwrap(resp);
-            if (op == DeviceProtocol.OpError)
-                return TargetResult.Fail(Encoding.UTF8.GetString(payload));
+            ExpectAck(resp);
             _status = DeviceStatus.Online;
             return TargetResult.Ok();
         }
@@ -169,9 +164,7 @@ public class ChannelDisplayTarget : IDisplayTarget
         try
         {
             var resp = await _channel.RequestAsync(DeviceProtocol.Wrap(DeviceProtocol.OpStop, 0, Array.Empty<byte>()), ct);
-            var (op, _, payload) = DeviceProtocol.Unwrap(resp);
-            if (op == DeviceProtocol.OpError)
-                return TargetResult.Fail(Encoding.UTF8.GetString(payload));
+            ExpectAck(resp);
             _status = DeviceStatus.Online;
             return TargetResult.Ok();
         }
@@ -186,9 +179,7 @@ public class ChannelDisplayTarget : IDisplayTarget
         try
         {
             var resp = await _channel.RequestAsync(DeviceProtocol.Wrap(DeviceProtocol.OpStatus, 0, Array.Empty<byte>()), ct);
-            var (op, _, payload) = DeviceProtocol.Unwrap(resp);
-            if (op == DeviceProtocol.OpError)
-                return TargetResult<DeviceStatus>.Fail(Encoding.UTF8.GetString(payload));
+            var payload = ExpectOpcode(resp, DeviceProtocol.OpStatus);
             var status = JsonSerializer.Deserialize<DeviceStatus>(Encoding.UTF8.GetString(payload));
             _status = status;
             return TargetResult<DeviceStatus>.Ok(_status);
@@ -197,6 +188,39 @@ public class ChannelDisplayTarget : IDisplayTarget
         {
             return TargetResult<DeviceStatus>.Fail("Status falló: " + ex.Message);
         }
+    }
+
+    // ---- Validación centralizada de respuestas (spec 18/21) ----
+
+    /// <summary>
+    /// Valida una respuesta que debe ser un ACK. Devuelve el payload (vacío) o lanza
+    /// <see cref="ProtocolException"/> si el opcode es Error, distinto de Ack, la trama es
+    /// truncada o la versión es incompatible.
+    /// </summary>
+    protected static void ExpectAck(byte[] resp)
+    {
+        var (op, _, payload) = DeviceProtocol.Unwrap(resp);
+        if (op == DeviceProtocol.OpError)
+            throw new ProtocolException(Encoding.UTF8.GetString(payload));
+        if (op != DeviceProtocol.OpAck)
+            throw new ProtocolException($"Opcode inesperado 0x{op:X2}; se esperaba ACK (0x{DeviceProtocol.OpAck:X2}).");
+    }
+
+    /// <summary>
+    /// Valida una respuesta que debe llevar un opcode concreto con payload. Devuelve el
+    /// payload o lanza <see cref="ProtocolException"/> si el opcode es Error, distinto del
+    /// esperado, o el payload está truncado (vacío para una operación que requiere datos).
+    /// </summary>
+    protected static byte[] ExpectOpcode(byte[] resp, byte expectedOp)
+    {
+        var (op, _, payload) = DeviceProtocol.Unwrap(resp);
+        if (op == DeviceProtocol.OpError)
+            throw new ProtocolException(Encoding.UTF8.GetString(payload));
+        if (op != expectedOp)
+            throw new ProtocolException($"Opcode inesperado 0x{op:X2}; se esperaba 0x{expectedOp:X2}.");
+        if (payload.Length == 0)
+            throw new ProtocolException($"Payload truncado para opcode 0x{expectedOp:X2}.");
+        return payload;
     }
 }
 
