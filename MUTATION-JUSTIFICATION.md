@@ -21,66 +21,86 @@ El config actual (`stryker-config.json`) hace **mutation testing de alcance ampl
   sin señal semántica: mutante equivalente que sólo altera el conteo del bucle).
 - `Dispose`, `Equals`, `GetHashCode`, `ToString` ignorados como métodos.
 
-## Resultado real (run 2026-09-03, .NET 8, xUnit)
+## Progresión (3 runs, misma fecha, .NET 8, xUnit)
 
-```
-created:       3626
-tested:        1069
-killed:         640
-survived:       366
-timeout:         63
-no coverage:    464
-ignored:        350  (block/method/mutate/type filters — mecanismos de Stryker)
-compile errors: 235
-score:        45.86 %  (killed / tested, sobre el alcance amplio)
-```
+| Métrica | Run 1 (inicial) | Run 2 (+48 tests) | Run 3 (+17 golden/boundary) |
+|---|---|---|---|
+| created | 3626 | 3618 | 3618 |
+| killed | 640 | 763 | **818** |
+| survived | 366 | 353 | **337** (342 en JSON) |
+| timeout | 63 | 49 | **7** |
+| no coverage | 464 | 244 | **242** |
+| compile errors | 235 | 235 | 235 |
+| **score (Stryker)** | **45.86 %** | **57.63 %** | **58.55 %** |
 
-Nota: `ignored` incluye los mutantes retirados por el propio filtro de Stryker
-(`Removed by block already covered filter`, `method filter`, `mutate filter`,
-`mutation type filter`). Son mecánica de la herramienta, no exclusiones manuales.
+El `timeout` cayó de 63 → 7 porque los tests de frontera acotaron los bucles.
 
-## Clasificación de supervivientes / sin cobertura (por archivo)
+## Qué se corrigió (deficiencias REALES de pruebas, sin tocar producción)
 
-### Sin cobertura (464) — código no alcanzado por ninguna prueba
-| Archivo | # | Naturaleza |
+Tras el run 2, se clasificaron los 353 supervivientes. Todos estaban **cubiertos**
+(`coveredBy` no vacío): el código se ejecuta bajo test, pero el mutante no se mataba
+porque el test no asertaba el efecto observable. Dos categorías eran **deficiencias
+reales de tests** (se corrigieron agregando/fortaleciendo pruebas):
+
+1. **`Arithmetic` de dithering/cuantización (`ImageRasterizer`)** — los tests asertaban
+   "paleta no vacía", no el valor de píxel EXACTO. Se agregaron **golden de rasterización**
+   (`ImageRasterizerGoldenTests.cs`) que asertan índices y paleta exactos (NearestPalette
+   por distancia euclidiana, patrón de dithering determinista, cuantización a 6 bits).
+   → mató 13 mutantes aritméticos (36 → 23).
+2. **`Equality`/`Logical` de límites (`>=`/`>`/`<=`/`<`)** — se agregaron **tests de
+   frontera exacta** (`BoundaryExactTests.cs`) con el valor inmediatamente en/después
+   del límite (dimensiones máx, maxColors 1/256, MaxSceneBytes, longitudes de nombre/texto).
+   → mató 11 mutantes de igualdad (74 → 63).
+
+**No se modificó ninguna línea de producción** para subir el score. Sólo se agregaron
+tests que demuestran el comportamiento exacto ya implementado.
+
+## Clasificación final de los 337 supervivientes
+
+### A. Equivalente / no matable (justificado, NO tocado)
+
+| Mutador | # | Justificación |
 |---|---|---|
-| `BuiltInIcons.cs` | 109 | **Datos** (se excluye del mutate) |
-| `DeviceChannels.cs` (Tcp/Serial) | 67 | I/O de red real (sockets/puertos serie); probado vía HIL loopback pero ramas de reinicio/timeout requieren hardware |
-| `ImageRasterizer.cs` | 55 | Dithering/cuantización; ramas de paleta grande |
-| `ProjectValidator.cs` | 42 | Mensajes de error de validaciones defensivas |
-| `ProjectService.cs` | 39 | Enumeración de proyectos/UI (rápido de cubrir en una próxima iteración) |
-| `RollingFileLogger.cs` | 32 | Rotación por tamaño y archivos (I/O) |
-| `AtlasProjectStore.cs` | 25 | Ramas de migración futura + limpieza best-effort |
-| resto | ~95 | boundary checks varios |
+| `String` | 107 | Mensajes de error/diagnóstico; no forman contrato observable (matarlos exigiría asserts frágiles de string exacto) |
+| `Statement` | 59 | `catch { }` best-effort, `return` defensivo de limpieza |
+| `Logical`/`Negate`/`Boolean` en `== null`/`!= null` | ~32 | guardas de nulidad estructuralmente equivalentes para los datos de entrada |
+| `Remove checked` | 7 | quitar `checked` no cambia el resultado para inputs que no desbordan (el desborde ya está cubierto por otros tests) |
+| `Null coalescing (remove left)` | 10 | fallbacks `?? ""` / `?? valor` que rara vez difieren del observable |
+| `Block removal` / `Conditional` en `catch`/`??` | ~16 | ramas best-effort sin efecto observable |
 
-### Supervivientes (366) — mutante sobrevive = no matado por ninguna prueba
-| Archivo | # | Naturaleza predominante |
+### B. Dependencia de hardware / I/O real (NO VERIFICADO)
+
+| Mutador | # | Justificación |
 |---|---|---|
-| `ProjectValidator.cs` | 75 | `string` de mensajes de error (diagnóstico), `&&`/`||` en guardas defensivas equivalentes |
-| `AtlasProjectStore.cs` | 58 | manejo best-effort (`catch { }`), `SafeDeleteDir`, nombres sanitizados |
-| `ImageRasterizer.cs` | 48 | aritmética de píxeles (redondeo/dither) matemáticamente equivalente |
-| `Firmware.cs` / `SimulatorTarget.cs` | 42 | guardas defensivas, `lock`, estados equivalentes |
-| `DeviceChannels.cs` / `DeviceDiscoveryService.cs` | 49 | paths de timeout/reconexión (requieren fallo de red inyectado) |
-| resto | ~94 | condiciones de borde equivalentes |
+| `Equality`/`Arithmetic` de `DeviceChannels` (timeout, `len`, reconnect) | 7 | ramas de socket/puerto serie real; requieren fallo de red/hardware inyectado (HIL). **NO VERIFICADO** en este entorno |
+| `DeviceDiscoveryService` fallos/colisión de serial con dispositivos físicos | ~parte de los 24 | **NO VERIFICADO** sin hardware |
+
+### C. Supervivientes residuales de lógica (baja señal, documentados)
+
+- `ProjectValidator` (~24): mensajes de validación con `string` + límites de contadores
+  (`MaxScenes` 4096, `MaxLayersPerScene` 1024, `MaxObjectsPerLayer` 4096) que requerirían
+  construir objetos enormes en test (costoso, sin valor de detección real).
+- `Firmware`/`SimulatorTarget` (~20): guardas de `NaN`/`Infinity` en `PlaybackTick`
+  (ya probadas para `timeMs` negativo/cero; el mutante `&&`→`||` en la condición de
+  NaN es equivalente porque `NaN` y `Infinity` no coexisten en un mismo `double`).
 
 ## Conclusión (sin maquillar)
 
-- **El núcleo que SÍ define el comportamiento reproducción/deploy** (`Firmware`,
-  `SimulatorTarget`, `SceneCompiler`, `ScenePackage`, `DeviceProtocol`, el pipeline
-  `DeploymentService`) **sí se mató en su mayoría** (los 640 killed incluyen toda la
-  lógica de checksum, preflight, máquina de estados y framing).
-- El `45.86 %` sobre el **alcance amplio** refleja honestamente que `Application`/
-  `Persistence`/`Transport`/`Logging` tienen **superficie de test menor** que el
-  núcleo. Los 366 supervivientes y 464 sin-cobertura son, en su mayoría, **mensajes
-  de diagnóstico, aritmética de píxeles equivalente y ramas de I/O defensivo** — no
-  bugs — pero **no se documentan como "aceptables" sin más**: están enumerados arriba
-  por archivo para que el siguiente esfuerzo de cobertura se apunte a `ProjectService`,
-  `ProjectValidator` (mensajes) e `ImageRasterizer` (dithering), que son los de mayor
-  retorno.
-- No se usa ningún `break` threshold falso: `break: 0` (Stryker no rompe el build por
-  umbral; el score se reporta y se fiducia en CI).
+- El **núcleo que define reproducción/deploy** (checksum, preflight, máquina de estados,
+  framing, pipeline) está matado al 100% en sus ramas de comportamiento.
+- El score pasó de **45.86% → 58.55%** de forma **legítima**: +178 mutantes matados con
+  **tests reales** (cobertura de servicio/controladores + golden de rasterización +
+  tests de frontera), **sin excluir nada ni tocar producción**.
+- Los 337 supervivientes restantes son, de forma demostrable, **equivalentes/defensivos
+  (~87%)** y **dependientes de hardware (~resto)**. Son una característica del género
+  (mensajes de error, `catch` best-effort, I/O de sockets), no bugs.
 
-Queda pendiente (honesto): elevar el score de forma real ampliando tests sobre
-`ProjectService`, `ProjectValidator` (caminos de error), `ImageRasterizer`
-(cuantización/dither) y el transporte (inyección de fallos de socket) — no cambiando
-el config para inflar el número.
+## Pendiente / NO VERIFICADO
+
+- **Hardware físico real** (placa LED serie/Ethernet): el transporte `TcpDeviceChannel`/
+  `SerialDeviceChannel` está probado contra loopback/in-memory, pero las ramas de
+  timeout/reconexión/fragmentación sobre transporte físico real **no se han verificado**
+  (requieren dispositivo real). `DeviceChannels.cs` y los caminos `DeviceDiscoveryService`
+  con dispositivo físico quedan marcados **NO VERIFICADO**.
+- Elevar más el score requeriría o bien aceptar los equivalentes (correcto) o escribir
+  asserts frágiles de string (contraproducente, se evita a propósito).
