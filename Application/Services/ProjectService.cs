@@ -11,11 +11,15 @@ public sealed class ProjectService
     private readonly string _projectsRoot;
 
     public ProjectService(AtlasProjectStore store, IWebHostEnvironment env)
+        : this(store, Path.Combine(env.ContentRootPath, "App_Data", "projects"))
+    {
+    }
+
+    /// <summary>Constructor para tests: root de proyectos explícito (mismo patrón que LibraryService).</summary>
+    public ProjectService(AtlasProjectStore store, string projectsRoot)
     {
         _store = store;
-        // biblioteca local fuera de wwwroot; p.ej. %temp%/dsletras o App_Data
-        _projectsRoot = ProjectPaths.CanonicalizeRoot(
-            Path.Combine(env.ContentRootPath, "App_Data", "projects"));
+        _projectsRoot = ProjectPaths.CanonicalizeRoot(projectsRoot);
     }
 
     public string ProjectsRoot => _projectsRoot;

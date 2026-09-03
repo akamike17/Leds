@@ -81,3 +81,6 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();
+
+/// <summary>Para que WebApplicationFactory&lt;Program&gt; en tests de integración pueda referenciar el punto de entrada.</summary>
+public partial class Program { }

@@ -80,10 +80,24 @@ verifica con pruebas reales. Los cambios principales:
 ## Validación final
 
 - **Build Release: 0 errores, 0 warnings.**
-- **Tests .NET: 423/423 pass.**
+- **Tests .NET: 471/471 pass.**
 - **E2E (Playwright): 9/9 pass.**
-- **Mutation (Stryker):** ver abajo (alcance amplio, reporte honesto).
+- **Cobertura de líneas (coverlet):** núcleo de dominio/deploy 90–100%;
+  lógica de producción (sin Vistas/ViewModels/Program) **85.8%** (2,355/2,746 líneas).
 - **Dependencias:** 0 vulnerables (`dotnet list package --vulnerable`); `npm audit`: 0.
+
+### Cobertura por capa (líneas, coverlet)
+
+| Capa | Cobertura |
+|---|---|
+| Núcleo deploy (DeviceProtocol, ScenePackage, ScenePackageJson, IDisplayTarget) | 100% |
+| Rendering (Font5x7, AnimationEvaluator, SceneRenderer, FrameBuffer) | 85–97% |
+| Persistencia (AtlasProjectStore, AtlasJson, ProjectPaths) | 92–96% |
+| Deployment (SimulatorTarget, Firmware, SceneCompiler, FirmwareTarget) | 85–97% |
+| Servicios (DeploymentService, ProjectService, ImageRasterizer, DeviceDiscoveryService, LibraryService) | 71–92% |
+| Validación (ProjectValidator) | 84% |
+| Controladores (integración MVC) | 57–100% |
+| Transporte (DeviceChannels) | 52% (ramas de I/O de sockets reales) |
 
 ## Mutation testing (honesto)
 

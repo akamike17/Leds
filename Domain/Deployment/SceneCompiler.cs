@@ -14,11 +14,16 @@ public static class SceneCompiler
     public const double DefaultFrameIntervalMs = 100.0;
     public const int MaxFrames = 100_000;
 
-    /// <summary>Dimensión máxima de canvas por lado (defensiva, evita OOM).</summary>
+    /// <summary>Dimensión máxima de canvas por lado (defensiva, evita OOM al renderizar).</summary>
     public const int MaxCanvasDimension = 512;
 
-    /// <summary>Tamaño máximo de memoria predicho para un paquete (bytes).</summary>
-    public const long MaxSceneBytes = 64L * 1024 * 1024; // 64 MiB
+    /// <summary>
+    /// Tope defensivo de MEMORIA del proceso de compilación (bytes), para rechazar un
+    /// paquete absurdamente grande ANTES de allocar los frames. NO es el límite del
+    /// dispositivo: el límite real de transferencia es <see cref="DeviceCapabilities.MaxSceneBytes"/>
+    /// (8 MiB en Firmware/SimulatorTarget), que <see cref="CompileForTarget"/> respeta.
+    /// </summary>
+    public const long MaxPackageMemoryBytes = 64L * 1024 * 1024; // 64 MiB (memoria de proceso)
 
     /// <summary>Compila una escena completa a N frames. Devuelve null con mensaje si es inválida.</summary>
     public static (ScenePackage? Package, string? Error) Compile(
@@ -57,8 +62,8 @@ public static class SceneCompiler
         // Predicción de memoria/tamaño: w*h*3 bytes/frame, checked en long.
         long bytesPerFrame = (long)canvas.Width * (long)canvas.Height * 3L;
         long predictedBytes = bytesPerFrame * frameCount;
-        if (predictedBytes > MaxSceneBytes)
-            return (null, $"Paquete estimado ({predictedBytes}B) excede el límite de memoria ({MaxSceneBytes}B).");
+        if (predictedBytes > MaxPackageMemoryBytes)
+            return (null, $"Paquete estimado ({predictedBytes}B) excede el tope de memoria de compilación ({MaxPackageMemoryBytes}B).");
 
         var frames = new List<CompiledFrame>(frameCount);
         for (int i = 0; i < frameCount; i++)

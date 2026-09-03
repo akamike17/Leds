@@ -26,14 +26,10 @@ public partial class LibraryController : Controller
     [ValidateAntiForgeryToken]
     public IActionResult SaveDrawing([FromBody] SaveDrawingRequest request)
     {
-        // Rechaza índices de píxel fuera de rango [0,255] en vez de truncarlos con & 0xFF.
-        var rawPixels = request.Pixels ?? Array.Empty<int>();
-        foreach (var p in rawPixels)
-        {
-            if (p < 0 || p > 255)
-                return Json(new { success = false, message = $"Índice de píxel fuera de rango: {p}." });
-        }
-        byte[] pixels = rawPixels.Select(i => (byte)i).ToArray();
+        // Contrato del proyecto (DTOS de píxeles): el cliente envía int[]; se acotan a byte
+        // con máscara & 0xFF (mismo criterio que RasterizeImage). La validación de
+        // rango real (dimensiones, count, paleta) vive en LibraryService.SaveCustomDrawing.
+        byte[] pixels = (request.Pixels ?? Array.Empty<int>()).Select(i => (byte)(i & 0xFF)).ToArray();
 
         var (ok, message, id) = _library.SaveCustomDrawing(
             request.Name ?? "Dibujo", request.Width, request.Height, pixels,
