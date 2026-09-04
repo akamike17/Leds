@@ -678,7 +678,17 @@ export class EditorState {
         document.getElementById('btn-add-layer').addEventListener('click', () => this.addLayer());
         document.getElementById('scene-duration').addEventListener('change', () => this.setSceneDuration());
 
-        // teclado: borrar/duplicar/undo/redo
+        // group / ungroup / align
+        document.getElementById('btn-group').addEventListener('click', () => this.groupSelected());
+        document.getElementById('btn-ungroup').addEventListener('click', () => this.ungroupSelected());
+        document.getElementById('btn-align-left').addEventListener('click', () => this.alignSelected('left'));
+        document.getElementById('btn-align-hcenter').addEventListener('click', () => this.alignSelected('hcenter'));
+        document.getElementById('btn-align-right').addEventListener('click', () => this.alignSelected('right'));
+        document.getElementById('btn-align-top').addEventListener('click', () => this.alignSelected('top'));
+        document.getElementById('btn-align-vmiddle').addEventListener('click', () => this.alignSelected('vmiddle'));
+        document.getElementById('btn-align-bottom').addEventListener('click', () => this.alignSelected('bottom'));
+
+        // teclado: borrar/duplicar/undo/redo/group
         window.addEventListener('keydown', e => this.onKeyDown(e));
     }
 
@@ -703,6 +713,10 @@ export class EditorState {
         } else if (e.key === 'y' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             this.performRedo();
+        } else if (e.key === 'g' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            if (e.shiftKey) this.ungroupSelected();
+            else this.groupSelected();
         }
     }
 
@@ -710,6 +724,10 @@ export class EditorState {
         for (const scene of this.project.scenes || [])
             for (const layer of scene.layers || [])
                 layer.objects = (layer.objects || []).filter(o => !ids.has(o.id));
+        // limpia referencias de grupos a miembros borrados
+        for (const scene of this.project.scenes || [])
+            for (const g of scene.groups || [])
+                g.memberIds = (g.memberIds || []).filter(id => !ids.has(id));
     }
 
     // Selección rectangular: delega en el Selection.
@@ -729,6 +747,74 @@ export class EditorState {
             return c;
         });
         this.layer().objects.push(...copies);
+        this.history.commitPending();
+        this.markDirty();
+        this.render();
+    }
+
+    // ----- Group / Ungroup / Align (spec 5 + 8) -----
+
+    // Agrupa la selección (≥2 objetos): crea un ObjectGroup con IDs únicos/resolubles.
+    // El grupo no tiene contenido visual: el framebuffer no cambia.
+    groupSelected() {
+        const sel = this.selection.list();
+        if (sel.length < 2) { this.notify(false, 'Selecciona al menos 2 objetos para agrupar.'); return; }
+        const scene = this.currentScene();
+        if (!scene) return;
+        this.history.captureOnce(this.project);
+        const ids = sel.map(o => o.id);
+        scene.groups = scene.groups || [];
+        const key = ids.slice().sort().join(',');
+        const existing = scene.groups.find(g => (g.memberIds || []).slice().sort().join(',') === key);
+        if (!existing) {
+            scene.groups.push({ id: this.newId(), name: `Grupo ${scene.groups.length + 1}`, memberIds: ids });
+        }
+        this.history.commitPending();
+        this.markDirty();
+        // el group no cambia el framebuffer; sólo re-render para overlay
+        this.render();
+        this.notify(true, `Grupo creado (${ids.length} objetos)`);
+    }
+
+    // Desagrupa los grupos cuya intersección con la selección contenga ≥1 miembro,
+    // conservando los objetos (framebuffer idéntico).
+    ungroupSelected() {
+        const scene = this.currentScene();
+        if (!scene) return;
+        const sel = new Set(this.selection.list().map(o => o.id));
+        const groups = scene.groups || [];
+        const touched = groups.filter(g => (g.memberIds || []).some(id => sel.has(id)));
+        if (touched.length === 0) { this.notify(false, 'La selección no pertenece a ningún grupo.'); return; }
+        this.history.captureOnce(this.project);
+        scene.groups = groups.filter(g => !touched.includes(g));
+        this.history.commitPending();
+        this.markDirty();
+        this.render();
+        this.notify(true, `Desagrupado (${touched.length} grupo/s)`);
+    }
+
+    // Alinea la selección (≥1 objeto). No modifica tamaño/timing/animation/layer.
+    alignSelected(direction) {
+        const list = this.selection.list().filter(o => !o.locked);   // locked respetado
+        if (list.length === 0) return;
+        this.history.captureOnce(this.project);
+        const left = Math.min(...list.map(o => o.position?.x ?? 0));
+        const right = Math.max(...list.map(o => (o.position?.x ?? 0) + (o.size?.width ?? this.selection.guessSize(o).w)));
+        const top = Math.min(...list.map(o => o.position?.y ?? 0));
+        const bottom = Math.max(...list.map(o => (o.position?.y ?? 0) + (o.size?.height ?? this.selection.guessSize(o).h)));
+        for (const o of list) {
+            const w = o.size?.width ?? this.selection.guessSize(o).w;
+            const h = o.size?.height ?? this.selection.guessSize(o).h;
+            o.position = o.position || { x: 0, y: 0 };
+            switch (direction) {
+                case 'left': o.position.x = left; break;
+                case 'right': o.position.x = right - w; break;
+                case 'hcenter': o.position.x = left + Math.floor((right - left - w) / 2); break;
+                case 'top': o.position.y = top; break;
+                case 'bottom': o.position.y = bottom - h; break;
+                case 'vmiddle': o.position.y = top + Math.floor((bottom - top - h) / 2); break;
+            }
+        }
         this.history.commitPending();
         this.markDirty();
         this.render();

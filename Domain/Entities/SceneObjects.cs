@@ -84,9 +84,14 @@ public sealed class ImageObject : SceneObject
     public string ConversionMetadata { get; set; } = string.Empty;
 }
 
-/// <summary>Agrupa miembros; no tiene contenido visual ni timing propio (invariante 7).</summary>
+/// <summary>
+/// Agrupa miembros por ID; no tiene contenido visual ni timing propio (invariante 7).
+/// Un grupo es una organización estable (ID propio), persistible, y sus miembros
+/// viven en las capas de la escena como objetos normales.
+/// </summary>
 public sealed class ObjectGroup
 {
+    public GroupId Id { get; set; } = GroupId.New();
     public List<ObjectId> MemberIds { get; set; } = new();
     public string Name { get; set; } = string.Empty;
 }
@@ -95,3 +100,6 @@ public enum TextAlignment { Left, Center, Right, Top, Middle, Bottom }
 public enum TextLayoutMode { Fit, Multiline, Marquee }
 public enum IconPaletteMode { Original, Tint, Monochrome }
 public enum ShapeKind { Line, Rectangle, Ellipse }
+
+/// <summary>Dirección de alineación de múltiples objetos (sin alterar tamaño/timing/layer).</summary>
+public enum Alignment { Left, HorizontalCenter, Right, Top, VerticalMiddle, Bottom }

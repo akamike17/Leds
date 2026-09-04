@@ -23,6 +23,7 @@ public static class AtlasJson
             new ProjectIdConverter(),
             new SceneIdConverter(),
             new ObjectIdConverter(),
+            new GroupIdConverter(),
             new AssetIdConverter(),
             new DeviceIdConverter(),
             new CanvasDefinitionConverter(),
@@ -156,6 +157,7 @@ internal abstract class IdConverterBase<T, TId> : JsonConverter<T>
 internal sealed class ProjectIdConverter : IdConverterBase<ProjectId, ProjectId> { }
 internal sealed class SceneIdConverter : IdConverterBase<SceneId, SceneId> { }
 internal sealed class ObjectIdConverter : IdConverterBase<ObjectId, ObjectId> { }
+internal sealed class GroupIdConverter : IdConverterBase<GroupId, GroupId> { }
 internal sealed class AssetIdConverter : IdConverterBase<AssetId, AssetId> { }
 internal sealed class DeviceIdConverter : IdConverterBase<DeviceId, DeviceId> { }
 

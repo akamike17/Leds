@@ -11,7 +11,7 @@ public sealed class EditingService
     /// <summary>Máximo de píxeles por dibujo (ancho * alto), aplicado con checked.</summary>
     public const int MaxDrawingPixels = 512 * 512;
 
-    public TextObject AddText(Scene scene, string text, PixelPoint position, RgbColor? color = null)
+    public TextObject AddText(Scene scene, string text, PixelPoint position, RgbColor? color = null, Layer? layer = null)
     {
         EnsureCapacity(scene, 1);
         var obj = new TextObject
@@ -22,12 +22,11 @@ public sealed class EditingService
             Color = color ?? RgbColor.White,
             Timing = new TimeRange(TimeSpan.Zero, scene.Duration),
         };
-        var layer = EnsureLayer(scene);
-        layer.Objects.Add(obj);
+        EnsureLayer(scene, layer).Objects.Add(obj);
         return obj;
     }
 
-    public ShapeObject AddShape(Scene scene, ShapeKind kind, PixelPoint position, PixelSize size)
+    public ShapeObject AddShape(Scene scene, ShapeKind kind, PixelPoint position, PixelSize size, Layer? layer = null)
     {
         EnsureCapacity(scene, 1);
         var obj = new ShapeObject
@@ -38,11 +37,11 @@ public sealed class EditingService
             Size = size,
             Timing = new TimeRange(TimeSpan.Zero, scene.Duration),
         };
-        EnsureLayer(scene).Objects.Add(obj);
+        EnsureLayer(scene, layer).Objects.Add(obj);
         return obj;
     }
 
-    public DrawingObject AddDrawing(Scene scene, PixelSize size)
+    public DrawingObject AddDrawing(Scene scene, PixelSize size, Layer? layer = null)
     {
         EnsureCapacity(scene, 1);
 
@@ -68,7 +67,7 @@ public sealed class EditingService
             PixelData = new byte[pixelCount],
             Timing = new TimeRange(TimeSpan.Zero, scene.Duration),
         };
-        EnsureLayer(scene).Objects.Add(obj);
+        EnsureLayer(scene, layer).Objects.Add(obj);
         return obj;
     }
 
@@ -77,10 +76,13 @@ public sealed class EditingService
         var set = ids.ToHashSet();
         foreach (var layer in scene.Layers)
             layer.Objects.RemoveAll(o => set.Contains(o.Id));
+        // limpia referencias de grupos a miembros borrados
+        foreach (var g in scene.Groups)
+            g.MemberIds.RemoveAll(set.Contains);
     }
 
     /// <summary>Duplica objetos generando IDs nuevos (spec: copia genera IDs nuevos).</summary>
-    public List<SceneObject> DuplicateObjects(Scene scene, IEnumerable<SceneObject> objects)
+    public List<SceneObject> DuplicateObjects(Scene scene, IEnumerable<SceneObject> objects, Layer? layer = null)
     {
         var src = objects.ToList();
         if (src.Count == 0)
@@ -90,14 +92,14 @@ public sealed class EditingService
         EnsureCapacity(scene, src.Count);
 
         var created = new List<SceneObject>(src.Count);
-        var layer = EnsureLayer(scene);
+        var target = EnsureLayer(scene, layer);
         foreach (var o in src)
         {
             var copy = CloneObject(o);
             copy.Id = ObjectId.New();
             copy.Name = o.Name + " (copia)";
             copy.Position = o.Position + new PixelPoint(1, 1);
-            layer.Objects.Add(copy);
+            target.Objects.Add(copy);
             created.Add(copy);
         }
         return created;
@@ -117,6 +119,87 @@ public sealed class EditingService
     {
         obj.Animations.RemoveAll(a => a.Slot == definition.Slot);
         obj.Animations.Add(definition);
+    }
+
+    // ----- Group / Ungroup (spec 5 + 8) -----
+
+    /// <summary>Crea un grupo con los objetos dados (≥2, IDs únicos y resolubles).</summary>
+    public ObjectGroup GroupObjects(Scene scene, IEnumerable<SceneObject> objects, string? name = null)
+    {
+        var members = objects.ToList();
+        if (members.Count < 2)
+            throw new ArgumentException("Se requieren al menos 2 objetos para agrupar.", nameof(objects));
+
+        var ids = members.Select(o => o.Id).ToList();
+        if (ids.Distinct().Count() != ids.Count)
+            throw new ArgumentException("El grupo contiene IDs duplicados.", nameof(objects));
+
+        var resolvable = scene.AllObjects.Select(o => o.Id).ToHashSet();
+        if (ids.Any(id => !resolvable.Contains(id)))
+            throw new ArgumentException("El grupo referencia objetos que no existen en la escena.");
+
+        // evita duplicados: un grupo con exactamente los mismos miembros ya existe
+        var existing = scene.Groups.FirstOrDefault(g => g.MemberIds.OrderBy(x => x.Value).SequenceEqual(ids.OrderBy(x => x.Value)));
+        if (existing != null) return existing;
+
+        var group = new ObjectGroup { MemberIds = ids, Name = name ?? $"Grupo {scene.Groups.Count + 1}" };
+        scene.Groups.Add(group);
+        return group;
+    }
+
+    /// <summary>Elimina un grupo conservando sus objetos (framebuffer idéntico).</summary>
+    public bool Ungroup(Scene scene, GroupId groupId)
+        => scene.Groups.RemoveAll(g => g.Id == groupId) > 0;
+
+    /// <summary>Mueve todos los miembros resolubles de un grupo como operación única.</summary>
+    public void MoveGroup(Scene scene, ObjectGroup group, PixelPoint delta)
+    {
+        var byId = scene.AllObjects.ToDictionary(o => o.Id);
+        foreach (var id in group.MemberIds)
+            if (byId.TryGetValue(id, out var obj))
+                obj.Position = obj.Position + delta;
+    }
+
+    // ----- Align (spec 8) -----
+
+    /// <summary>
+    /// Alinea la selección (≥1 objeto) en coordenadas LED según el bounding box común.
+    /// No modifica tamaño, timing, animación ni capa.
+    /// </summary>
+    public void AlignObjects(IEnumerable<SceneObject> objects, Alignment alignment)
+    {
+        var list = objects.ToList();
+        if (list.Count == 0) return;
+
+        int left = list.Min(o => o.Position.X);
+        int right = list.Max(o => o.Position.X + o.Size.Width);
+        int top = list.Min(o => o.Position.Y);
+        int bottom = list.Max(o => o.Position.Y + o.Size.Height);
+
+        foreach (var o in list)
+        {
+            switch (alignment)
+            {
+                case Alignment.Left:
+                    o.Position = new PixelPoint(left, o.Position.Y);
+                    break;
+                case Alignment.Right:
+                    o.Position = new PixelPoint(right - o.Size.Width, o.Position.Y);
+                    break;
+                case Alignment.HorizontalCenter:
+                    o.Position = new PixelPoint(left + (right - left - o.Size.Width) / 2, o.Position.Y);
+                    break;
+                case Alignment.Top:
+                    o.Position = new PixelPoint(o.Position.X, top);
+                    break;
+                case Alignment.Bottom:
+                    o.Position = new PixelPoint(o.Position.X, bottom - o.Size.Height);
+                    break;
+                case Alignment.VerticalMiddle:
+                    o.Position = new PixelPoint(o.Position.X, top + (bottom - top - o.Size.Height) / 2);
+                    break;
+            }
+        }
     }
 
     /// <summary>
@@ -146,10 +229,21 @@ public sealed class EditingService
                 $"(existentes: {existing}, intentado añadir: {incoming}).");
     }
 
-    private static Layer EnsureLayer(Scene scene)
+    /// <summary>
+    /// Contrato de capa destino: si se indica <paramref name="layer"/> explícito se usa
+    /// (si pertenece a la escena); si no, se usa la capa por defecto (primera ordenada).
+    /// Evita la ambigüedad de "primera capa" cuando la UI tiene una capa activa distinta.
+    /// </summary>
+    private static Layer EnsureLayer(Scene scene, Layer? layer = null)
     {
         if (scene.Layers.Count == 0)
             scene.Layers.Add(new Layer { Name = "Capa 1", Order = 0 });
+
+        if (layer != null)
+        {
+            var resolved = scene.Layers.FirstOrDefault(l => ReferenceEquals(l, layer) || l.Id == layer.Id);
+            if (resolved != null) return resolved;
+        }
         return scene.Layers.OrderBy(l => l.Order).First();
     }
 

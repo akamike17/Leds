@@ -15,6 +15,18 @@
         <button class="btn btn-sm btn-outline-light ms-1" id="btn-image" title="Importar imagen">🖼 Imagen</button>
         <input type="file" id="image-file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none">
 
+        <!-- Group / Ungroup / Align -->
+        <span class="ms-3 d-flex align-items-center gap-1" id="group-tools" title="Agrupar/alinear selección">
+            <button class="btn btn-sm btn-outline-light" id="btn-group" title="Agrupar (Ctrl+G)">🧩 Grupo</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-ungroup" title="Desagrupar (Ctrl+Shift+G)">🧩−</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-left" title="Alinear izquierda">⇤</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-hcenter" title="Alinear centro horizontal">⇹</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-right" title="Alinear derecha">⇥</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-top" title="Alinear arriba">⇧</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-vmiddle" title="Alinear centro vertical">↕</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-bottom" title="Alinear abajo">⇩</button>
+        </span>
+
         <!-- Target (dispositivo de envío) + envío -->
         <span class="ms-auto d-flex align-items-center gap-2">
             <label class="small text-muted mb-0" for="device-select">Target:</label>

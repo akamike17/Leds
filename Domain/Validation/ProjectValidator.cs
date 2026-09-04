@@ -78,10 +78,12 @@ public static class ProjectValidator
         var seenObjectIds = new HashSet<ObjectId>();
         var seenSceneIds = new HashSet<SceneId>();
         var seenLayerIds = new HashSet<string>();
+        var seenGroupIds = new HashSet<GroupId>();
 
         foreach (var scene in project.Scenes)
         {
             ValidateScene(scene, result, seenSceneIds, seenLayerIds, seenObjectIds, project);
+            ValidateGroups(scene, result, seenGroupIds, seenObjectIds);
         }
 
         ValidateEmbeddedAssets(project, result);
@@ -154,6 +156,26 @@ public static class ProjectValidator
 
         if (sceneObjects > MaxObjectsPerScene)
             result.Error($"La escena '{OrUnnamed(scene.Name)}' supera el máximo de {MaxObjectsPerScene} objetos: {sceneObjects}.");
+    }
+
+    private static void ValidateGroups(Scene scene, ValidationResult result,
+        HashSet<GroupId> seenGroupIds, HashSet<ObjectId> seenObjectIds)
+    {
+        foreach (var g in scene.Groups)
+        {
+            if (!seenGroupIds.Add(g.Id))
+                result.Error($"ID de grupo duplicado: {g.Id}.");
+
+            if (g.MemberIds.Count < 2)
+                result.Error($"Grupo '{OrUnnamed(g.Name)}' debe tener al menos 2 miembros.");
+
+            if (g.MemberIds.Distinct().Count() != g.MemberIds.Count)
+                result.Error($"Grupo '{OrUnnamed(g.Name)}' contiene miembros duplicados.");
+
+            foreach (var id in g.MemberIds)
+                if (!seenObjectIds.Contains(id))
+                    result.Error($"Grupo '{OrUnnamed(g.Name)}' referencia un objeto inexistente: {id}.");
+        }
     }
 
     private static void ValidateObject(SceneObject obj, Scene scene, Project project,

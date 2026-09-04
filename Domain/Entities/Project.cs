@@ -32,6 +32,7 @@ public sealed class Scene
         Name = string.Empty;
         Duration = TimeSpan.FromSeconds(5);
         Layers = new List<Layer>();
+        Groups = new List<ObjectGroup>();
     }
 
     public SceneId Id { get; set; }
@@ -39,6 +40,9 @@ public sealed class Scene
     public TimeSpan Duration { get; set; }
     public SceneLoopMode LoopMode { get; set; } = SceneLoopMode.Loop;
     public List<Layer> Layers { get; set; }
+
+    /// <summary>Grupos de objetos de la escena (organización sin contenido visual, invariante 7).</summary>
+    public List<ObjectGroup> Groups { get; set; }
 
     /// <summary>Todos los objetos de la escena, en orden de capa.</summary>
     public IEnumerable<SceneObject> AllObjects =>

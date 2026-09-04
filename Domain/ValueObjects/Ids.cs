@@ -24,6 +24,11 @@ public sealed record ObjectId : Id<ObjectId>
     public ObjectId(Guid value) : base(value) { }
 }
 
+public sealed record GroupId : Id<GroupId>
+{
+    public GroupId(Guid value) : base(value) { }
+}
+
 public sealed record AssetId : Id<AssetId>
 {
     public AssetId(Guid value) : base(value) { }
