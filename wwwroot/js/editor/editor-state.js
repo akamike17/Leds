@@ -684,7 +684,7 @@ export class EditorState {
 
     onKeyDown(e) {
         if (e.key === 'Delete' || e.key === 'Backspace') {
-            const sel = this.selection.list();
+            const sel = this.selection.list().filter(o => !o.locked);   // locked no se borra
             if (sel.length) {
                 this.history.captureOnce(this.project);
                 const ids = new Set(sel.map(o => o.id));
