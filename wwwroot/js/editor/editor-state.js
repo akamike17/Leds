@@ -70,6 +70,19 @@ export class EditorState {
         canvas.height = this.project.canvas.height;
         canvas.style.width = (this.project.canvas.width * this.pixelScale) + 'px';
         canvas.style.height = (this.project.canvas.height * this.pixelScale) + 'px';
+
+        // Overlay de selección (contorno azul + rect-select) va en un canvas SEPARADO
+        // superpuesto, de modo que el canvas de contenido (#led-canvas) conserva SÓLO
+        // el framebuffer real (invariante 4/R5: editor == simulador == compiled).
+        const overlay = document.getElementById('selection-overlay');
+        this.overlayCtx = overlay ? overlay.getContext('2d') : null;
+        if (overlay) {
+            overlay.width = canvas.width;
+            overlay.height = canvas.height;
+            overlay.style.width = canvas.style.width;
+            overlay.style.height = canvas.style.height;
+        }
+
         this.renderer = new Renderer(canvas, this.ctx);
         // Assets embebidos (assetId -> JSON) para iconos/imágenes (invariante 8).
         this.renderer.embeddedAssets = this.project.embeddedAssets || {};
@@ -115,7 +128,6 @@ export class EditorState {
         const scene = this.currentScene();
         if (scene) this.renderer.renderScene(scene, this.currentTime);
         this.drawSelectionOverlay();
-        this.drawRectSelect();
         this.inspector.render();
         this.updateLibraryButton();
         if (this.hud) this.hud.setSelection(this.selection.list().length);
@@ -556,7 +568,8 @@ export class EditorState {
     }
 
     drawSelectionOverlay() {
-        const ctx = this.ctx;
+        const ctx = this.overlayCtx || this.ctx;
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         ctx.strokeStyle = '#0d6efd';
         ctx.lineWidth = 1;
         for (const obj of this.selection.list()) {
@@ -564,14 +577,17 @@ export class EditorState {
             const w = this.selection.guessSize(obj).w, h = this.selection.guessSize(obj).h;
             ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
         }
+        // superpone el rectángulo de selección en marcha (mismo overlay)
+        const s = this.tools.rectSelect;
+        if (s) {
+            ctx.strokeRect(Math.min(s.x0, s.x1), Math.min(s.y0, s.y1),
+                Math.abs(s.x1 - s.x0), Math.abs(s.y1 - s.y0));
+        }
     }
 
     drawRectSelect() {
-        const s = this.tools.rectSelect;
-        if (!s) return;
-        const ctx = this.ctx;
-        ctx.strokeStyle = '#0d6efd';
-        ctx.strokeRect(Math.min(s.x0, s.x1), Math.min(s.y0, s.y1), Math.abs(s.x1 - s.x0), Math.abs(s.y1 - s.y0));
+        // dibuja el overlay completo (selección + rect en marcha) sobre el overlay-canvas
+        this.drawSelectionOverlay();
     }
 
     newId() {

@@ -100,6 +100,49 @@ public class DeployController : Controller
         var status = await resolved.GetStatusAsync(ct);
         return Json(new { status = status.Value.ToString() });
     }
+
+    /// <summary>
+    /// Devuelve el framebuffer (RGB24) del paquete ACTIVO en el simulador, en el
+    /// instante `timeMs` (frame prerenderizado más cercano). Demuestra el framebuffer
+    /// REAL recibido por el target (R5: editor == simulador == compilado), no un
+    /// simple "Enviado".
+    /// </summary>
+    [HttpGet]
+    public IActionResult SimulatorFrame([FromQuery] double timeMs = 0)
+    {
+        var active = _simulator.Active;
+        if (active == null || active.Frames.Count == 0)
+            return Json(new { success = false, message = "Sin escena activa en el simulador." });
+
+        // frame prerenderizado más cercano (>= timeMs), o el último.
+        var frame = active.Frames[0];
+        foreach (var f in active.Frames)
+        {
+            if (f.TimeMs >= timeMs) { frame = f; break; }
+            frame = f;
+        }
+
+        int w = active.Canvas.Width, h = active.Canvas.Height;
+        var pixels = new List<object>();
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                int o = (y * w + x) * 3;
+                if (frame.Pixels[o] > 0 || frame.Pixels[o + 1] > 0 || frame.Pixels[o + 2] > 0)
+                    pixels.Add(new { x, y, r = frame.Pixels[o], g = frame.Pixels[o + 1], b = frame.Pixels[o + 2] });
+            }
+
+        return Json(new
+        {
+            success = true,
+            width = w,
+            height = h,
+            timeMs = frame.TimeMs,
+            checksum = active.Checksum.Value,
+            lit = pixels.Count,
+            pixels,
+        });
+    }
 }
 
 public sealed class SendRequest

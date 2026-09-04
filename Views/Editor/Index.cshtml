@@ -38,7 +38,10 @@
 
         <!-- Canvas centro -->
         <div class="editor-canvas flex-grow-1 bg-black d-flex align-items-center justify-content-center" id="canvas-host">
-            <canvas id="led-canvas" class="led-canvas" role="img" aria-label="Lienzo LED"></canvas>
+            <div style="position:relative;line-height:0">
+                <canvas id="led-canvas" class="led-canvas" role="img" aria-label="Lienzo LED"></canvas>
+                <canvas id="selection-overlay" class="led-canvas" style="position:absolute;left:0;top:0;pointer-events:none" role="presentation"></canvas>
+            </div>
         </div>
 
         <!-- Inspector derecha -->
