@@ -5,7 +5,7 @@ Auditoría funcional correctiva según `V2.md`. Estado al CIERRE de esta pasada.
 ## SHAs
 
 - SHA inicial (registrado al entrar): `4de2261ecfb052399f9a614fba4516220216ba8b`
-- SHA final local: `9c8b9e3c2ab16135b453074bfee055a5829f0258`
+- SHA final local: `23d9dad9a5b7115690fee7f9a1b6f886d8958a79`
 - Push: **pendiente — NO declarar cierre hasta que el RUN remoto de GitHub Actions sea GREEN.**
 
 ## 1. Causa raíz del R2 (CI Run 33913167064)
