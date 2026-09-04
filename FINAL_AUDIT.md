@@ -6,7 +6,8 @@ Auditoría funcional correctiva según `V2.md`. Estado al CIERRE de esta pasada.
 
 - SHA inicial (registrado al entrar): `4de2261ecfb052399f9a614fba4516220216ba8b`
 - SHA final local: `23d9dad9a5b7115690fee7f9a1b6f886d8958a79`
-- Push: **pendiente — NO declarar cierre hasta que el RUN remoto de GitHub Actions sea GREEN.**
+- **CI remoto: GREEN** — GitHub Actions run `33920050735` (todos los jobs + gate
+  agregado en verde; ver §2 y §10).
 
 ## 1. Causa raíz del R2 (CI Run 33913167064)
 
@@ -99,6 +100,13 @@ reales vía ITestOutputHelper; umbrales de regresión (no micro-optimización).
 - Coverage: línea **83.41%** (2529/3032), rama **74.57%** (1056/1416).
 - Mutation: score **59.58%** (break 55).
 
+### CI remoto (GitHub Actions)
+
+- Run ID: **33920050735** — **GREEN** (Conclusión: `success`).
+- Jobs: build (17s), test-dotnet (42s), e2e (2m8s), mutation (11m6s), coverage (39s),
+  dependency-audit (28s), static-analysis (28s), **all-mandatory-gates (2s)** — todos ✓.
+- El E2E remoto también pasó (R2 corregido), confirmando la causa raíz.
+
 ## NO VERIFICADO (requiere hardware físico)
 
 - Transporte físico real (placa LED serie/Ethernet): cubierto por HIL (sockets loopback)
@@ -107,6 +115,6 @@ reales vía ITestOutputHelper; umbrales de regresión (no micro-optimización).
 
 ## Pendientes reales / blockers
 
-- **CI remoto (GitHub Actions): PENDIENTE.** El push correctivo debe producir un run
-  GREEN antes de declarar cierre (v2.md §10). Run ID se registrará al terminar.
-- Hardware físico real: BLOCKED (sin dispositivo).
+- **CI remoto: RESUELTO** — run `33920050735` GREEN. No queda pendiente de CI.
+- Hardware físico real: BLOCKED (sin dispositivo). Se separa SIMULATOR VERIFIED vs
+  HARDWARE NOT VERIFIED (no se declara PASS de hardware).
