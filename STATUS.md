@@ -37,10 +37,13 @@ Evidencia vía Playwright real + `getImageData` (píxeles observables), no
 
 ### P0 — Biblioteca
 - Guardar dibujo con confirmación visible (HUD `#stat-notify`).
-- Modal en el editor con tabs Dibujos/Iconos, preview correcto y botón Insertar.
+- Modal en el editor con tabs Dibujos/Iconos/Imágenes, preview correcto y botón Insertar.
 - Insertar crea copia independiente; el asset usado queda embebido en el proyecto.
 - 16 iconos incluidos (no sólo Corazón): Corazón, Estrella, Flechas, Teléfono,
   Carrito, Engranaje, Wi-Fi, etc.
+- Imágenes importadas persisten en la biblioteca global (`i-*.json`) y se listan
+  en el tab "Imágenes" (insertar/borrar). El flujo importar→listar→insertar→
+  persistir está verificado.
 - Contrato de píxeles C#↔JS DEFINIDO y probado: `byte[]` base64 en wire ↔ array
   JS; al cargar se decodifica, al guardar se codifica (`normalizePixels`/
   `projectForWire`). Corrigió el bug real "Proyecto no deserializable" de todo
@@ -50,6 +53,12 @@ Evidencia vía Playwright real + `getImageData` (píxeles observables), no
 - Seleccionar archivo → decode → rasterizar (nearest-neighbor/quantize/dither)
   → insertar ImageObject con asset embebido. Save/Open sin archivo origen
   conserva (verificado 32 px idénticos).
+
+### R5 — equivalencia editor == simulador
+- El overlay de selección (contorno azul) ahora vive en un canvas superpuesto
+  SEPARADO; `#led-canvas` conserva SÓLO el framebuffer real. `/Deploy/SimulatorFrame`
+  devuelve el framebuffer del paquete activo en el simulador, y el E2E verifica
+  `editor.lit == simulador.lit` con píxeles idénticos (no un simple "Enviado").
 
 ### P1 — Send/Simulator
 - Send guarda el estado actual ANTES de enviar (canvas nunca desincronizado del
@@ -86,7 +95,7 @@ Evidencia vía Playwright real + `getImageData` (píxeles observables), no
 
 - `dotnet build -c Release`: 0 errores, 0 warnings.
 - Tests .NET: 507/507 pass (estable en 3 corridas).
-- E2E Playwright (17 specs, framebuffer real): 17/17 pass.
+- E2E Playwright (30 specs, framebuffer real + coordenadas exactas): 30/30 pass.
 - Sin errores de consola JS ni HTTP 4xx/5xx inesperados (gate dedicado).
 - Sin botones muertos ni placeholders "se implementará después" en el alcance V1.
 
@@ -105,3 +114,5 @@ Evidencia vía Playwright real + `getImageData` (píxeles observables), no
 - `a5f5460` feat(P1): send correcto + timeline/animación + Devices/Playback/Home.
 - `68bce7b` feat(P1): autosave conectado + UI escenas/capas.
 - `ce2a74a` fix(contrato píxeles): byte[] base64 ↔ array JS + R1/R2 acceptance.
+- `3cf127c` test(E2E píxeles exactos) + fix(overlay selección separado del framebuffer).
+- `6ec62b8` feat(P0 biblioteca): imágenes importadas listables e insertables.
