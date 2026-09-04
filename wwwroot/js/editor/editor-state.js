@@ -31,6 +31,7 @@ export class EditorState {
         const data = await res.json();
         if (!data.success) throw new Error(data.message || 'No se pudo cargar el proyecto');
         this.project = JSON.parse(data.project);
+        this.normalizePixels(this.project);
         document.getElementById('project-name').textContent = this.project.name || 'Sin título';
         this.setupCanvas();
         this.populateSceneSelect();
@@ -54,7 +55,7 @@ export class EditorState {
                         'Content-Type': 'application/json',
                         'RequestVerificationToken': window.__antiforgery?.token || '',
                     },
-                    body: JSON.stringify(this.project),
+                    body: JSON.stringify(this.projectForWire()),
                 });
                 if (this.hud) this.hud.setSend('Autoguardado');
             } catch { /* offline: el autosave retoma en el próximo tick */ }
@@ -585,6 +586,49 @@ export class EditorState {
         if (this.hud) this.hud.setDirty(true);
     }
 
+    // ---- contrato de píxeles C# ↔ JS (único, probado) ----
+    // C# serializa byte[] como base64 string; el modelo JS usa array de números.
+    // Al cargar se decodifica base64→array; al guardar se codifica array→base64.
+
+    normalizePixels(project) {
+        for (const scene of project.scenes || [])
+            for (const layer of scene.layers || [])
+                for (const obj of layer.objects || []) {
+                    if (obj.kind === 'drawing' && typeof obj.pixelData === 'string') {
+                        obj.pixelData = this.pixelsFromBase64(obj.pixelData);
+                    } else if (obj.kind === 'drawing' && !Array.isArray(obj.pixelData)) {
+                        obj.pixelData = [];
+                    }
+                }
+    }
+
+    pixelsFromBase64(b64) {
+        const bin = atob(b64);
+        const out = [];
+        for (let i = 0; i < bin.length; i++) out.push(bin.charCodeAt(i) & 0xff);
+        return out;
+    }
+
+    pixelsToBase64(arr) {
+        const bytes = new Uint8Array(arr.length);
+        for (let i = 0; i < arr.length; i++) bytes[i] = arr[i] & 0xff;
+        let bin = '';
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin);
+    }
+
+    // Copia del proyecto con pixelData codificado a base64 (formato que espera C#).
+    projectForWire() {
+        const clone = JSON.parse(JSON.stringify(this.project));
+        for (const scene of clone.scenes || [])
+            for (const layer of scene.layers || [])
+                for (const obj of layer.objects || []) {
+                    if (obj.kind === 'drawing' && Array.isArray(obj.pixelData))
+                        obj.pixelData = this.pixelsToBase64(obj.pixelData);
+                }
+        return clone;
+    }
+
     // ----- acciones de UI -----
     bindUi() {
         document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -969,7 +1013,7 @@ export class EditorState {
                 'Content-Type': 'application/json',
                 'RequestVerificationToken': window.__antiforgery?.token || '',
             },
-            body: JSON.stringify(this.project),
+            body: JSON.stringify(this.projectForWire()),
         });
         const data = await res.json();
         if (data.success) {

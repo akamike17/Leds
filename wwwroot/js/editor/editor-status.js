@@ -122,7 +122,7 @@ export class StatusHud {
                     'Content-Type': 'application/json',
                     'RequestVerificationToken': window.__antiforgery?.token || '',
                 },
-                body: JSON.stringify(this.state.project),
+                body: JSON.stringify(this.state.projectForWire()),
             });
             const saveData = await saveRes.json();
             if (!saveData.success) {
