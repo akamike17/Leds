@@ -7,6 +7,7 @@
     <ul class="nav nav-tabs mb-3">
         <li class="nav-item"><button class="nav-link active" data-lib-tab="drawings" type="button">Mis dibujos</button></li>
         <li class="nav-item"><button class="nav-link" data-lib-tab="icons" type="button">Iconos</button></li>
+        <li class="nav-item"><button class="nav-link" data-lib-tab="images" type="button">Imágenes</button></li>
     </ul>
 
     <div id="library-status" class="mb-2"></div>
@@ -112,10 +113,52 @@
             }
         }
 
+        async function loadImages() {
+            const res = await fetch('/Library/Images');
+            const data = await res.json();
+            const grid = document.getElementById('library-grid');
+            grid.innerHTML = '';
+            if (!data.images || data.images.length === 0) {
+                grid.innerHTML = '<div class="col-12 text-muted">No hay imágenes importadas.</div>';
+                return;
+            }
+            for (const im of data.images) {
+                const col = document.createElement('div');
+                col.className = 'col-auto';
+                col.innerHTML = `
+                    <div class="card" style="width:140px">
+                        <div class="card-body p-2 text-center">
+                            <canvas width="${im.width}" height="${im.height}" style="width:96px;height:96px;image-rendering:pixelated;background:#000"></canvas>
+                            <div class="small mt-1 text-truncate" title="${esc(im.name)}">${esc(im.name)}</div>
+                            <div class="small text-muted">${esc(im.sourceFormat || '')}</div>
+                            <button class="btn btn-sm btn-outline-danger mt-1" type="button">Borrar</button>
+                        </div>
+                    </div>`;
+                grid.appendChild(col);
+                draw(col.querySelector('canvas'), im.width, im.height, b64bytes(im.pixels), im.palette || []);
+                col.querySelector('button').addEventListener('click', async () => {
+                    const res = await fetch('/Library/DeleteImage', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                        body: JSON.stringify({ id: im.id }),
+                    });
+                    let data;
+                    try { data = await res.json(); } catch { data = null; }
+                    if (!res.ok || !data || !data.success) {
+                        status(false, 'Error al borrar: ' + ((data && data.message) || res.status));
+                        return;
+                    }
+                    status(true, `Eliminada "${im.name}".`);
+                    loadImages();
+                });
+            }
+        }
+
         document.querySelectorAll('[data-lib-tab]').forEach(b => {
             b.addEventListener('click', () => {
                 document.querySelectorAll('[data-lib-tab]').forEach(x => x.classList.toggle('active', x === b));
                 if (b.dataset.libTab === 'icons') loadIcons();
+                else if (b.dataset.libTab === 'images') loadImages();
                 else loadDrawings();
             });
         });

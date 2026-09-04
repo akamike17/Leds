@@ -801,6 +801,7 @@ export class EditorState {
         const grid = document.getElementById('library-grid');
         grid.innerHTML = '<div class="col-12 text-muted">Cargando…</div>';
         if (tab === 'icons') this.loadIcons(grid);
+        else if (tab === 'images') this.loadImages(grid);
         else this.loadDrawings(grid);
     }
 
@@ -828,6 +829,20 @@ export class EditorState {
         }
     }
 
+    async loadImages(grid) {
+        const res = await fetch('/Library/Images');
+        const data = await res.json();
+        grid.innerHTML = '';
+        const items = data.images || [];
+        if (items.length === 0) {
+            grid.innerHTML = '<div class="col-12 text-muted">No hay imágenes importadas.</div>';
+            return;
+        }
+        for (const im of items) {
+            grid.appendChild(this.libraryCard(im, 'image'));
+        }
+    }
+
     // Tarjeta de asset con preview canvas + botón Insertar.
     libraryCard(asset, kind) {
         const col = document.createElement('div');
@@ -848,6 +863,7 @@ export class EditorState {
         // insertar
         col.querySelector('button').addEventListener('click', () => {
             if (kind === 'icon') this.insertIconAsset(asset);
+            else if (kind === 'image') this.insertImageAsset(asset);
             else this.insertDrawingAsset(asset);
             bootstrap.Modal.getOrCreateInstance(document.getElementById('library-modal')).hide();
         });
@@ -933,6 +949,34 @@ export class EditorState {
         this.markDirty();
         this.render();
         this.notify(true, `Dibujo "${asset.name}" insertado`);
+    }
+
+    // Inserta una imagen importada de la biblioteca como ImageObject (copia independiente
+    // + asset embebido). La imagen persistió en la biblioteca al importarse; aquí se
+    // re-embebe su contenido dentro del proyecto para no depender del catálogo externo.
+    insertImageAsset(asset) {
+        const scene = this.currentScene();
+        if (!scene) return;
+        this.history.captureOnce(this.project);
+        const assetId = asset.id;
+        this.project.embeddedAssets = this.project.embeddedAssets || {};
+        this.project.embeddedAssets[assetId] = JSON.stringify({
+            width: asset.width, height: asset.height,
+            pixels: asset.pixels,
+            palette: (asset.palette || []).map(c => ({ r: c.r, g: c.g, b: c.b })),
+        });
+        const obj = {
+            id: this.newId(), kind: 'image', name: asset.name || 'Imagen',
+            position: { x: 0, y: 0 }, size: { width: asset.width, height: asset.height },
+            visible: true, locked: false, brightness: 255,
+            timing: { start: 0, end: scene.duration ?? 5000 }, animations: [],
+            assetId, conversionMetadata: asset.conversionMetadata || '',
+        };
+        this.layer().objects.push(obj);
+        this.history.commitPending();
+        this.markDirty();
+        this.render();
+        this.notify(true, `Imagen "${asset.name}" insertada`);
     }
 
     // Importa una imagen (spec 15): decode → preview → rasteriza (nearest-neighbor +

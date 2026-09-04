@@ -99,8 +99,9 @@ public sealed class LibraryService
             var result = new List<CustomDrawingAsset>();
             foreach (var f in Directory.EnumerateFiles(_libraryRoot, "*.json"))
             {
-                // Ignora archivos temporales de escritura atómica.
+                // Ignora archivos temporales de escritura atómica e imágenes (i-*.json).
                 if (f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) continue;
+                if (Path.GetFileName(f).StartsWith("i-", StringComparison.Ordinal)) continue;
                 try
                 {
                     var asset = System.Text.Json.JsonSerializer.Deserialize<CustomDrawingAsset>(
@@ -132,6 +133,71 @@ public sealed class LibraryService
         lock (_lock)
         {
             var path = Path.Combine(_libraryRoot, $"{id.Value:N}.json");
+            if (!File.Exists(path)) return false;
+            File.Delete(path);
+            return true;
+        }
+    }
+
+    /// <summary>Guarda una imagen importada (rasterizada) en la biblioteca (escritura atómica).</summary>
+    public (bool success, string message, AssetId? id) SaveCustomImage(
+        string name, string sourceFormat, int width, int height, byte[] pixels,
+        List<RgbColor>? palette = null, string conversionMetadata = "")
+    {
+        if (width <= 0 || height <= 0) return (false, "Dimensiones inválidas.", null);
+
+        int pixelCount;
+        try { pixelCount = checked(width * height); }
+        catch (OverflowException) { return (false, "Desborde de píxeles.", null); }
+        if (pixelCount > MaxDrawingPixels) return (false, $"Imagen supera el máximo de {MaxDrawingPixels} píxeles.", null);
+
+        try
+        {
+            var asset = new ImageAsset
+            {
+                Name = string.IsNullOrWhiteSpace(name) ? "Imagen" : name.Trim(),
+                SourceFormat = sourceFormat ?? "",
+                Width = width,
+                Height = height,
+                Pixels = pixels ?? Array.Empty<byte>(),
+                Palette = palette ?? new List<RgbColor>(),
+                ConversionMetadata = conversionMetadata ?? "",
+                License = new AssetLicenseInfo { Origin = "importado por usuario", License = "desconocida" },
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(asset, AtlasJson.Options);
+            WriteAtomic(Path.Combine(_libraryRoot, $"i-{asset.Id.Value:N}.json"), json);
+            return (true, "Imagen guardada.", asset.Id);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message, null);
+        }
+    }
+
+    public IReadOnlyList<ImageAsset> ListImages()
+    {
+        lock (_lock)
+        {
+            var result = new List<ImageAsset>();
+            foreach (var f in Directory.EnumerateFiles(_libraryRoot, "i-*.json"))
+            {
+                if (f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    var asset = System.Text.Json.JsonSerializer.Deserialize<ImageAsset>(File.ReadAllText(f), AtlasJson.Options);
+                    if (asset != null) result.Add(asset);
+                }
+                catch { /* skip corrupt */ }
+            }
+            return result.OrderBy(a => a.Name, StringComparer.Ordinal).ToList();
+        }
+    }
+
+    public bool DeleteImage(AssetId id)
+    {
+        lock (_lock)
+        {
+            var path = Path.Combine(_libraryRoot, $"i-{id.Value:N}.json");
             if (!File.Exists(path)) return false;
             File.Delete(path);
             return true;

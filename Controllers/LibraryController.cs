@@ -63,6 +63,33 @@ public partial class LibraryController : Controller
         return Json(new { success = true, icons });
     }
 
+    [HttpGet]
+    public IActionResult Images()
+    {
+        var images = _library.ListImages().Select(i => new
+        {
+            id = i.Id.Value.ToString("N"),
+            name = i.Name,
+            sourceFormat = i.SourceFormat,
+            width = i.Width,
+            height = i.Height,
+            pixels = i.Pixels,
+            palette = i.Palette.Select(p => new { r = p.R, g = p.G, b = p.B }),
+            conversionMetadata = i.ConversionMetadata,
+        });
+        return Json(new { success = true, images });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult DeleteImage([FromBody] DeleteDrawingRequest request)
+    {
+        if (!Guid.TryParse(request.Id, out var guid))
+            return Json(new { success = false, message = "ID inválido." });
+        var ok = _library.DeleteImage(new Domain.ValueObjects.AssetId(guid));
+        return Json(new { success = ok, message = ok ? "Eliminada." : "No encontrada." });
+    }
+
     /// <summary>Importa una imagen rasterizada (RGBA) y devuelve un asset embebible.</summary>
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -96,6 +123,13 @@ public partial class LibraryController : Controller
         };
 
         var json = System.Text.Json.JsonSerializer.Serialize(asset, AtlasJson.Options);
+
+        // Guarda la imagen importada en la biblioteca global ("Imágenes importadas"),
+        // además de devolver el asset para embeberse en el proyecto.
+        _library.SaveCustomImage(
+            asset.Name, asset.SourceFormat, asset.Width, asset.Height,
+            asset.Pixels, asset.Palette, asset.ConversionMetadata);
+
         return Json(new { success = true, assetId = asset.Id.Value.ToString("N"), assetJson = json });
     }
 }
