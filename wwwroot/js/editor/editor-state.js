@@ -34,8 +34,31 @@ export class EditorState {
         document.getElementById('project-name').textContent = this.project.name || 'Sin título';
         this.setupCanvas();
         this.populateSceneSelect();
+        this.populateLayerSelect();
         this.updateSceneTimeLabel();
         this.render();
+        this.startAutosave();
+    }
+
+    // Autosave (spec 16): conecta el backend Autosave a la sesión de edición. Escribe
+    // <id>.atlas.autosave cada 30 s si hay cambios, sin tocar el documento principal.
+    startAutosave() {
+        if (this._autosaveTimer) clearInterval(this._autosaveTimer);
+        this._autosaveTimer = setInterval(async () => {
+            if (!this.dirty) return;
+            const projectId = document.getElementById('project-id')?.value;
+            try {
+                await fetch('/Projects/Autosave', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': window.__antiforgery?.token || '',
+                    },
+                    body: JSON.stringify(this.project),
+                });
+                if (this.hud) this.hud.setSend('Autoguardado');
+            } catch { /* offline: el autosave retoma en el próximo tick */ }
+        }, 30_000);
     }
 
     setupCanvas() {
@@ -109,8 +132,61 @@ export class EditorState {
         return (this.project.scenes || [])[idx] || (this.project.scenes || [])[0] || null;
     }
 
+    // Capa actual seleccionada en el selector (por índice). Devuelve null si no hay.
     currentLayer(scene) {
-        return (scene.layers || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0] || null;
+        const sel = document.getElementById('layer-select');
+        const idx = sel ? parseInt(sel.value, 10) : 0;
+        const layers = [...(scene?.layers || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        return layers[idx] || layers[0] || null;
+    }
+
+    // Puebla el selector de capas de la escena actual (y reconstr. selección).
+    populateLayerSelect() {
+        const scene = this.currentScene();
+        const sel = document.getElementById('layer-select');
+        if (!sel) return;
+        sel.innerHTML = '';
+        [...(scene?.layers || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).forEach((l, i) => {
+            const opt = document.createElement('option');
+            opt.value = String(i);
+            opt.textContent = l.name || `Capa ${i + 1}`;
+            sel.appendChild(opt);
+        });
+    }
+
+    // Añade una capa a la escena actual (markDirty + re-render).
+    addLayer() {
+        const scene = this.currentScene();
+        if (!scene) return;
+        this.history.captureOnce(this.project);
+        const order = (scene.layers || []).length;
+        scene.layers = scene.layers || [];
+        scene.layers.push({ id: 'l-' + this.newId(), name: `Capa ${order + 1}`, order, visible: true, locked: false, objects: [] });
+        this.history.commitPending();
+        this.populateLayerSelect();
+        const sel = document.getElementById('layer-select');
+        if (sel) sel.value = String(order);
+        this.markDirty();
+        this.render();
+    }
+
+    // Añade una escena vacía (markDirty + re-render + seleccionarla).
+    addScene() {
+        this.history.captureOnce(this.project);
+        const idx = (this.project.scenes || []).length;
+        this.project.scenes.push({
+            id: this.newId(), name: `Escena ${idx + 1}`, duration: 5000, loopMode: 1,
+            layers: [{ id: 'l-' + this.newId(), name: 'Capa 1', order: 0, visible: true, locked: false, objects: [] }],
+        });
+        this.history.commitPending();
+        this.populateSceneSelect();
+        const sceneSel = document.getElementById('scene-select');
+        if (sceneSel) sceneSel.value = String(idx);
+        this.populateLayerSelect();
+        this.syncSceneDurationInput();
+        this.updateSceneTimeLabel();
+        this.markDirty();
+        this.render();
     }
 
     // ----- puntero -----
@@ -464,7 +540,18 @@ export class EditorState {
         const scene = this.currentScene();
         if (!scene.layers || scene.layers.length === 0)
             scene.layers = [{ id: 'l1', name: 'Capa 1', order: 0, visible: true, locked: false, objects: [] }];
-        return [...scene.layers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0];
+        const idx = this.currentLayerIndex();
+        const sorted = [...scene.layers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        return sorted[idx] || sorted[0];
+    }
+
+    // Índice de la capa activa en el selector (para `layer()`).
+    currentLayerIndex() {
+        const sel = document.getElementById('layer-select');
+        const idx = sel ? parseInt(sel.value, 10) : 0;
+        const scene = this.currentScene();
+        const count = [...(scene?.layers || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).length;
+        return (idx >= 0 && idx < count) ? idx : 0;
     }
 
     drawSelectionOverlay() {
@@ -521,10 +608,14 @@ export class EditorState {
             b.addEventListener('click', () => this.loadLibraryTab(b.dataset.libTab));
         });
         document.getElementById('scene-select').addEventListener('change', () => {
+            this.populateLayerSelect();
             this.syncSceneDurationInput();
             this.updateSceneTimeLabel();
             this.render();
         });
+        document.getElementById('layer-select').addEventListener('change', () => this.render());
+        document.getElementById('btn-add-scene').addEventListener('click', () => this.addScene());
+        document.getElementById('btn-add-layer').addEventListener('click', () => this.addLayer());
         document.getElementById('scene-duration').addEventListener('change', () => this.setSceneDuration());
 
         // teclado: borrar/duplicar/undo/redo
