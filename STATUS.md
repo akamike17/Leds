@@ -1,148 +1,107 @@
-# DSLetras — Estado del proyecto (auditoría correctiva)
+# DSLetras — Estado del proyecto (auditoría funcional correctiva)
 
 Herramienta de diseño de letreros LED. Spec maestro: `AtlasLetreros_REV3_DEEPSEEK_MASTER.md`.
 
-## Resumen de la auditoría correctiva
+## Alcance de esta auditoría
 
-Esta auditoría corrige las desviaciones detectadas en el cierre anterior y las
-verifica con pruebas reales. Los cambios principales:
+Rige `ins.txt`: **auditoría funcional correctiva para cerrar V1 BASIC**. Se
+congelaron mutation/coverage/tests abstractos hasta que el producto funcione
+realmente desde navegador. Criterio de aceptación: una función está terminada
+sólo cuando el usuario completa el flujo desde la UI real y el resultado
+sobrevive Save/Reload.
 
-### P0 — Seguridad y persistencia
-- **Path traversal eliminado**: `ProjectsController.Open(path)` (ruta arbitraria)
-  fue **eliminado**. Abrir se hace por `ProjectId` y toda ruta se resuelve dentro de
-  `ProjectsRoot` vía la utilidad única `ProjectPaths` (canonicalización + containment
-  estricto). `AtlasProjectStore` rechaza rutas rooted, `..`, separadores y nombres de
-  archivo no simples en manifest/scenes/assets/fonts/previews.
-- **Save crash-safe**: temp + validación → rename a `.bak` → rename a principal. El
-  backup se mantiene hasta validar el nuevo principal; si falla el segundo rename, el
-  backup se **restaura**. Autosave usa el mismo mecanismo. Fault-injection antes/durante/
-  después de cada rename (`Infrastructure/Persistence/AtlasProjectStore.FailPoint`).
-- **GET mutante eliminado**: `Editor/New` pasó de GET a **POST** con antiforgery.
-- **Antiforgery consistente**: `[ValidateAntiForgeryToken]` en todas las operaciones
-  mutables MVC y JSON fetch; el token viaja por encabezado `RequestVerificationToken`
-  (configurado en `AddAntiforgery`) y se inyecta en `_Layout` como `window.__antiforgery`.
-- **Binding loopback**: si `ASPNETCORE_URLS` no se define, el servidor se enlaza SÓLO a
-  `http://127.0.0.1` (defensa ante exposición accidental del control de dispositivos).
+## Lo que se DEMOSTRÓ funcional (verificado con framebuffer real)
 
-### P1 — Integridad y límites
-- **Checksum .atlas completo**: cubre manifest canónico + project shell + cada scene +
-  cada asset (árbol de hashes SHA-256, determinista, sin timestamps). Una modificación
-  a una scene/asset invalida el checksum aunque el shell/manifest sigan intactos.
-  Se corrigió además un bug real: `TimeRange` no tenía converter y perdía `end` al
-  reabrir (objeto con timing corrupto); añadido `TimeRangeConverter`.
-- **ScenePackage.ComputeChecksum** cubre ProtocolVersion, DurationMs (double sin pérdida),
-  LoopMode, Canvas, FrameIntervalMs, FrameCount y, por frame, TimeMs + Pixels.
-- **EstimatedBytes → tamaño wire real** (`RealWireSize()` = serialización JSON).
-- **Preflight SceneCompiler**: frameInterval finito > 0, duración finita/positiva, canvas
-  dentro de límites, frameCount acotado, multiplicaciones en long, predicción de memoria.
-- **FrameBuffer**: width*height checked/long + máximo de píxeles (rechaza desborde).
-- **Máquina de estados unificada** (Simulator/Firmware/FirmwareTarget): una transferencia
-  activa, tamaño esperado, Upload antes de Verify, Verify antes de Activate, LastKnownGood.
-- **Firmware**: expected size en staging, verificación de tamaño real, invariantes del
-  paquete, FrameInterval válido, `PlaybackTick` robusto ante tiempo negativo/NaN/no-finito.
-- **ChannelDisplayTarget**: `ExpectAck`/`ExpectOpcode` centralizados (nunca trata un opcode
-  distinto de Ack/Error como éxito; payload truncado y versión incompatible → fallo).
-- **Tcp/Serial channel**: SemaphoreSlim (serialización), timeout por request, validación de
-  magic/version/length ANTES de reservar payload, máximo de respuesta, reset/reconnect,
-  cancelación robusta.
-- **DeviceDiscoveryService**: registro thread-safe, colisiones de serial explícitas,
-  fallos sanitizados.
+Evidencia vía Playwright real + `getImageData` (píxeles observables), no
+"canvas visible" ni "dirty cambió".
 
-### Integración de hardware
-- **Flujo real conectado**: `SettingsController` + vista `Settings/Index` permite configurar/
-  enumerar canales LAN (`TcpDeviceChannel`) y Serial (`SerialDeviceChannel`), que alimentan
-  `DeviceDiscoveryService.DiscoverAsync` con canales reales (no adapters sueltos).
-- Tests loopback/in-memory separados de los simulados (`TCP HIL` y `contract`).
+### P0 — Editor
+- Nuevo proyecto, abrir, guardar, texto, lápiz, borrador (elimina objeto, no negro
+  encima), línea, rectángulo, elipse (real, no strokeRect), fill (flood-fill
+  acotado), selección por click, Ctr/Shift multiselect, selección rectangular
+  (por intersección), mover, borrar, duplicar, Undo/Redo, inspector, playback.
+- `#btn-open` conectado al flujo real (navega a /Projects).
+- `previewShape` dibuja línea/rect/elipse según la herramienta real.
 
-### Rendering
-- **`AnimationEvaluator.ViewportWidth` static mutable ELIMINADO**: el viewport viaja como
-  argumento (`Evaluate(obj, t, viewportWidth)`), Render es puro/thread-safe. Test de
-  concurrencia con dos canvases.
-- **DrawEllipse corregido** (C# y JS): `i/j` locales, `cx=(w-1)/2.0`, `cy=(h-1)/2.0`,
-  `x/y` sólo en el `SetPixel`/`fillRect` final. Golden de elipse desplazada.
-- **Renderer JS↔C# paridad**: JS ahora implementa animations, brightness, clips, icon e
-  image (espejo de `SceneRenderer`), eliminando la divergencia "icon/image sin implementar".
+### P0 — Texto
+- `HOLA` pinta y sobrevive Save/Open (60 px idénticos).
+- Caracteres acentuados `ÁÉÍÓÚ ñü¿!` y `$%&+-/@#().` pintan píxeles.
+- Overflow: texto que no cabe activa marquee automático y NO se recorta
+  silenciosamente (anclado al lienzo, visible).
 
-### Editor JS
-- **DrawingSession**: puntos absolutos, punto inicial del pointerdown, correcto para
-  izquierda/arriba/diagonales, clamp al canvas.
-- **Playback**: rAF + tiempo real (no incremento por setTimeout), stop real, Once/Loop/
-  PingPong, sin estado residual (`aria-pressed`, no `dataset.playing`).
+### P0 — Inspector
+- Precarga valores existentes (nombre, X/Y, texto, color, visible, locked,
+  brillo, timing inicio/fin) sin destruirlos.
+- Edición actualiza objeto → render inmediato → markDirty → Undo/Redo →
+  Save/Open. X/Y mueve el objeto (verificado por píxeles).
 
-### Validación / observabilidad / CI
-- **ProjectValidator endurecido**, **MaxObjectsPerScene aplicado de verdad**, checked
-  arithmetic en EditingService/LibraryService/ImageRasterizer, escritura atómica en library.
-- **RollingFileLogger** redacta Message Y Exception + structured state, retención/tamaño.
-- **.vs fuera del índice** y en `.gitignore`. **4 warnings** corregidos (0 warnings).
-- **CI**: warnings-as-errors, Node 24, `npm audit` explícito, dotnet-stryker **fijado**
-  a 4.16.0, coverage report, análisis estático.
+### P0 — Biblioteca
+- Guardar dibujo con confirmación visible (HUD `#stat-notify`).
+- Modal en el editor con tabs Dibujos/Iconos, preview correcto y botón Insertar.
+- Insertar crea copia independiente; el asset usado queda embebido en el proyecto.
+- 16 iconos incluidos (no sólo Corazón): Corazón, Estrella, Flechas, Teléfono,
+  Carrito, Engranaje, Wi-Fi, etc.
+- Contrato de píxeles C#↔JS DEFINIDO y probado: `byte[]` base64 en wire ↔ array
+  JS; al cargar se decodifica, al guardar se codifica (`normalizePixels`/
+  `projectForWire`). Corrigió el bug real "Proyecto no deserializable" de todo
+  dibujo.
 
-## Validación final
+### P0 — Imágenes
+- Seleccionar archivo → decode → rasterizar (nearest-neighbor/quantize/dither)
+  → insertar ImageObject con asset embebido. Save/Open sin archivo origen
+  conserva (verificado 32 px idénticos).
 
-- **Build Release: 0 errores, 0 warnings.**
-- **Tests .NET: 494/494 pass.**
-- **E2E (Playwright): 9/9 pass.**
-- **Cobertura de líneas (coverlet):** lógica de producción (sin Vistas/VM/Program) **85.8%**.
-- **Mutation (Stryker, alcance amplio): 58.91%** (45.86% → 58.91%, subida legítima con
-  tests reales de cobertura, golden de rasterización, frontera y guardas; sin tocar
-  producción). Mutation testing **cerrado**; clasificación completa en
-  `MUTATION-JUSTIFICATION.md`.
-- **Dependencias:** 0 vulnerables (`dotnet list package --vulnerable`); `npm audit`: 0.
+### P1 — Send/Simulator
+- Send guarda el estado actual ANTES de enviar (canvas nunca desincronizado del
+  device); envía la escena seleccionada (SceneIndex), no siempre Scenes[0].
 
-### Cobertura por capa (líneas, coverlet)
+### P1 — Timeline/animaciones
+- Duración de escena editable; panel de animación en inspector (Fixed/Blink/
+  Marquee/Slide/Pulse/Wipe/Frame, Slow/Normal/Fast, dirección, Loop,
+  Entrance/Main/Exit). Blink cambia el framebuffer al reproducir (512→0 px).
 
-| Capa | Cobertura |
-|---|---|
-| Núcleo deploy (DeviceProtocol, ScenePackage, ScenePackageJson, IDisplayTarget) | 100% |
-| Rendering (Font5x7, AnimationEvaluator, SceneRenderer, FrameBuffer) | 85–97% |
-| Persistencia (AtlasProjectStore, AtlasJson, ProjectPaths) | 92–96% |
-| Deployment (SimulatorTarget, Firmware, SceneCompiler, FirmwareTarget) | 85–97% |
-| Servicios (DeploymentService, ProjectService, ImageRasterizer, DeviceDiscoveryService, LibraryService) | 71–92% |
-| Validación (ProjectValidator) | 84% |
-| Controladores (integración MVC) | 57–100% |
-| Transporte (DeviceChannels) | 52% (ramas de I/O de sockets reales) |
+### P1 — Escenas/capas
+- Selector de escena y capa; añadir escena/capa; persistir. La capa activa
+  recibe los objetos nuevos.
 
-## Mutation testing (honesto)
+### P1 — Autosave/Recovery
+- Autosave conectado a la sesión (`/Projects/Autosave` cada 30 s si hay cambios).
+  Recovery ante corrupción ya vive y está probado en `AtlasProjectStore`
+  (temp + validación + rename + restauración de backup).
 
-El config anterior sólo mutaba un subconjunto de `Domain/Deployment` y excluía
-mutadores enteros (`string`, `statement`, `block`) y 8 spans por byte-offset frágil,
-y se reportaba como "100% sobre lógica núcleo". Eso no reflejaba el alcance real.
+### P1 — Devices/Playback/Home
+- `/Devices`: lista targets (serial/transport/endpoint/online), ya no placeholder.
+- `/Playback`: compilar/enviar escena + estado del target, ya no placeholder.
+- Home: portada (Nuevo/Abrir/Biblioteca/Dispositivos), eliminado el Welcome
+  default.
 
-El nuevo `stryker-config.json`:
+## R1 y R2 del MASTER SPEC (ejecutados con navegador real)
 
-- **Mutate amplio**: `Domain/Deployment/*`, `Domain/Validation/*`,
-  `Application/Services/*`, `Infrastructure/Persistence/*`,
-  `Infrastructure/Transport/*`, `Infrastructure/Logging/*`.
-- **Sin exclusiones por byte-offset** (frágiles); sólo se excluye el mutador `update`
-  (equivalente: `++→--` produce artefactos de timeout sin señal).
-- Reporte honesto: created / tested / killed / survived / no coverage / ignored /
-  compile errors.
+- **R1 anuncio reina**: `MG SOL` → `PC` → `SE ARREGLAN COMPUTADORAS` → Save/Open
+  (píxeles idénticos) → enviar al simulador.
+- **R2 dibujo**: corazón continuo con lápiz → mover → blink → guardar en
+  biblioteca → borrar → reinsertar → Undo/Redo → Save/Open (idéntico).
 
-Resultado (ver `MUTATION-JUSTIFICATION.md` para clasificación por archivo):
-```
-created:       3626
-tested:        1069
-killed:         640
-survived:       366
-timeout:         63
-no coverage:    464   (enumerados en MUTATION-JUSTIFICATION.md)
-ignored:        350
-compile errors: 235
-score:        45.86 %  (sobre el alcance amplio — honesto)
-```
+## Gates finales
 
-## Pendiente de hardware físico
+- `dotnet build -c Release`: 0 errores, 0 warnings.
+- Tests .NET: 507/507 pass (estable en 3 corridas).
+- E2E Playwright (17 specs, framebuffer real): 17/17 pass.
+- Sin errores de consola JS ni HTTP 4xx/5xx inesperados (gate dedicado).
+- Sin botones muertos ni placeholders "se implementará después" en el alcance V1.
 
-La integración LAN/Serial está completa y probada contra loopback TCP/in-memory. NO se ha
-probado contra hardware físico real (placa LED serie/Ethernet): requiere un dispositivo
-físico y queda fuera del cierre de software. El simulador (`SimulatorTarget`) y el
-firmware modelado (`Firmware`) cubren el contrato completo para tests deterministas.
+## Pendientes reales (NO verificados)
 
-## Archivos de referencia
+- Hardware físico real (placa LED serie/Ethernet): el simulador (`SimulatorTarget`)
+  y el firmware modelado (`Firmware`) cubren el contrato completo en tests
+  deterministas, pero NO se probó contra un dispositivo físico. Requiere HW.
+- Transports USB/Serial/Wi-Fi reales: los canales LAN/Serial se construyen desde
+  la configuración de Settings y se prueban en loopback TCP/in-memory, no contra
+  un dispositivo real.
 
-- `AtlasLetreros_REV3_DEEPSEEK_MASTER.md` — spec maestro.
-- `MUTATION-JUSTIFICATION.md` — clasificación de mutation testing.
-- `THIRD-PARTY-NOTICES.md` — auditoría de dependencias.
-- `stryker-config.json` — config de Stryker (alcance amplio, honesto).
-- `tests/e2e/` — suite E2E Playwright (9 flujos).
-- `.github/workflows/ci.yml` — CI (checkout limpio: build → test → E2E → mutation → audit).
+## Commits de esta auditoría (sin push)
+
+- `94ced88` fix(editor): P0 funcional (fill/eraser/preview/rect-select/inspector/biblioteca/imagen/no-clipping).
+- `a5f5460` feat(P1): send correcto + timeline/animación + Devices/Playback/Home.
+- `68bce7b` feat(P1): autosave conectado + UI escenas/capas.
+- `ce2a74a` fix(contrato píxeles): byte[] base64 ↔ array JS + R1/R2 acceptance.
