@@ -655,7 +655,6 @@ export class EditorState {
             });
         });
         document.getElementById('btn-save').addEventListener('click', () => this.save());
-        document.getElementById('btn-open').addEventListener('click', () => this.openProject());
         document.getElementById('btn-play').addEventListener('click', () => this.togglePlay());
         document.getElementById('btn-save-library').addEventListener('click', () => this.saveToLibrary());
         document.getElementById('btn-library').addEventListener('click', () => this.openLibrary());
@@ -858,12 +857,6 @@ export class EditorState {
         this.notify(data.success, data.success
             ? `Guardado en Mi biblioteca (${data.id})`
             : ('Error: ' + data.message));
-    }
-
-    // Abrir proyecto desde la toolbar: navega al listado de proyectos. Si hay
-    // cambios sin guardar, el beforeunload del HUD ya protege el trabajo.
-    openProject() {
-        window.location.href = '/Projects';
     }
 
     // Notificación consolidada (success/warning/error) vía el HUD.

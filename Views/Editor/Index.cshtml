@@ -15,18 +15,6 @@
         <button class="btn btn-sm btn-outline-light ms-1" id="btn-image" title="Importar imagen">🖼 Imagen</button>
         <input type="file" id="image-file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none">
 
-        <!-- Group / Ungroup / Align -->
-        <span class="ms-3 d-flex align-items-center gap-1" id="group-tools" title="Agrupar/alinear selección">
-            <button class="btn btn-sm btn-outline-light" id="btn-group" title="Agrupar (Ctrl+G)">🧩 Grupo</button>
-            <button class="btn btn-sm btn-outline-light" id="btn-ungroup" title="Desagrupar (Ctrl+Shift+G)">🧩−</button>
-            <button class="btn btn-sm btn-outline-light" id="btn-align-left" title="Alinear izquierda">⇤</button>
-            <button class="btn btn-sm btn-outline-light" id="btn-align-hcenter" title="Alinear centro horizontal">⇹</button>
-            <button class="btn btn-sm btn-outline-light" id="btn-align-right" title="Alinear derecha">⇥</button>
-            <button class="btn btn-sm btn-outline-light" id="btn-align-top" title="Alinear arriba">⇧</button>
-            <button class="btn btn-sm btn-outline-light" id="btn-align-vmiddle" title="Alinear centro vertical">↕</button>
-            <button class="btn btn-sm btn-outline-light" id="btn-align-bottom" title="Alinear abajo">⇩</button>
-        </span>
-
         <!-- Target (dispositivo de envío) + envío -->
         <span class="ms-auto d-flex align-items-center gap-2">
             <label class="small text-muted mb-0" for="device-select">Target:</label>
@@ -75,6 +63,16 @@
         <label class="ms-3 small text-muted mb-0" for="scene-duration">Duración (s):</label>
         <input type="number" class="form-control form-control-sm w-auto ms-1" id="scene-duration" min="1" step="0.5" style="width:80px" />
         <span class="ms-3 small text-muted" id="scene-time">0.0s / 5.0s</span>
+        <span class="ms-3 d-flex align-items-center gap-1" title="Agrupar/alinear selección">
+            <button class="btn btn-sm btn-outline-light" id="btn-group" title="Agrupar (Ctrl+G)">🧩</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-ungroup" title="Desagrupar (Ctrl+Shift+G)">🧩−</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-left" title="Alinear izquierda">⇤</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-hcenter" title="Alinear centro horizontal">⇹</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-right" title="Alinear derecha">⇥</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-top" title="Alinear arriba">⇧</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-vmiddle" title="Alinear centro vertical">↕</button>
+            <button class="btn btn-sm btn-outline-light" id="btn-align-bottom" title="Alinear abajo">⇩</button>
+        </span>
         <button class="btn btn-sm btn-outline-light ms-auto" id="btn-play" aria-label="Reproducir preview">▶</button>
     </div>
 </div>
@@ -110,6 +108,23 @@
           <li class="nav-item"><button class="nav-link" data-lib-tab="images" type="button">Imágenes</button></li>
         </ul>
         <div class="row g-2" id="library-grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de cambios sin guardar (Guardar/Descartar/Cancelar) para navegación interna -->
+<div class="modal fade" id="unsaved-modal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content bg-dark text-light">
+      <div class="modal-header">
+        <h5 class="modal-title">Cambios sin guardar</h5>
+      </div>
+      <div class="modal-body small">Tienes cambios sin guardar. ¿Qué quieres hacer?</div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="unsaved-cancel">Cancelar</button>
+        <button type="button" class="btn btn-outline-light btn-sm" id="unsaved-discard">Descartar</button>
+        <button type="button" class="btn btn-primary btn-sm" id="unsaved-save">Guardar</button>
       </div>
     </div>
   </div>

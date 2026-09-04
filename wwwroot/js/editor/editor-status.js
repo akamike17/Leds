@@ -27,7 +27,58 @@ export class StatusHud {
         const btnSend = document.getElementById('btn-send');
         if (btnSend) btnSend.addEventListener('click', () => this.send());
 
+        // Navegación interna (spec 19): al hacer clic en un enlace del nav o en
+        // `#btn-open` con cambios sin guardar, se ofrece Guardar/Descartar/Cancelar
+        // (no sólo el beforeunload genérico del navegador).
+        document.querySelectorAll('.navbar a[href]').forEach(a => {
+            a.addEventListener('click', (e) => {
+                const href = a.getAttribute('href');
+                if (!href || href === '#') return;
+                if (!this.state.dirty) return;   // sin cambios: navegación normal
+                e.preventDefault();
+                this.confirmNavigation(href);
+            });
+        });
+        // `#btn-open` abre /Projects; con cambios sin guardar pide confirmación.
+        const btnOpen = document.getElementById('btn-open');
+        if (btnOpen) btnOpen.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (this.state.dirty) this.confirmNavigation('/Projects');
+            else window.location.href = '/Projects';
+        });
+
+        this.bindUnsavedModal();
+
         this.discover();
+    }
+
+    // Diálogo interno Guardar/Descartar/Cancelar para navegación controlada.
+    confirmNavigation(href) {
+        this._pendingNav = href;
+        const modal = document.getElementById('unsaved-modal');
+        if (modal && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modal).show();
+    }
+
+    bindUnsavedModal() {
+        const modalEl = document.getElementById('unsaved-modal');
+        if (!modalEl) return;
+        const close = () => { if (window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide(); };
+        document.getElementById('unsaved-cancel').addEventListener('click', () => { this._pendingNav = null; close(); });
+        document.getElementById('unsaved-discard').addEventListener('click', () => {
+            const href = this._pendingNav; this._pendingNav = null;
+            this.state.dirty = false;   // descartar = perder cambios intencionadamente
+            close();
+            if (href) window.location.href = href;
+        });
+        document.getElementById('unsaved-save').addEventListener('click', async () => {
+            const href = this._pendingNav;
+            // guardar primero; si falla, no navegar
+            await this.state.save();
+            if (this.state.dirty) { this._pendingNav = null; close(); return; }
+            this._pendingNav = null;
+            close();
+            if (href) window.location.href = href;
+        });
     }
 
     async discover() {
