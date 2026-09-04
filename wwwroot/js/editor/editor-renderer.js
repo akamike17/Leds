@@ -172,7 +172,8 @@ export class Renderer {
       const width = root.width, height = root.height;
       const pixels = Array.from(Uint8Array.from(atob(root.pixels), c => c.charCodeAt(0)));
       let palette = root.palette || [];
-      return { width, height, pixels, palette };
+      const transparentIndex = root.transparentIndex != null ? root.transparentIndex : -1;
+      return { width, height, pixels, palette, transparentIndex };
     } catch {
       return null;
     }
@@ -182,6 +183,9 @@ export class Renderer {
     const ctx = this.ctx;
     let palette = asset.palette;
     if (palette.length === 0) palette = [{ r: 255, g: 255, b: 255 }];
+    // Transparencia (spec 14): el asset declara su índice de fondo transparente;
+    // ese índice no se pinta para no borrar objetos debajo.
+    const transparentIndex = asset.transparentIndex ?? -1;
     for (let y = 0; y < asset.height; y++)
       for (let x = 0; x < asset.width; x++) {
         if (clipped(clip, x, y)) continue;
@@ -189,6 +193,7 @@ export class Renderer {
         if (idx >= asset.pixels.length) continue;
         const pi = asset.pixels[idx];
         if (pi < 0 || pi >= palette.length) continue;
+        if (pi === transparentIndex) continue;
         let color = palette[pi];
         if (tint) color = tint;
         ctx.fillStyle = toCss(color, brightness);

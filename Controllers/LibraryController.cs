@@ -59,6 +59,7 @@ public partial class LibraryController : Controller
             height = i.Height,
             pixels = i.Pixels,
             palette = i.Palette.Select(p => new { r = p.R, g = p.G, b = p.B }),
+            transparentIndex = i.TransparentIndex,
         });
         return Json(new { success = true, icons });
     }

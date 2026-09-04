@@ -216,7 +216,8 @@ public static class SceneRenderer
             if (root.TryGetProperty("palette", out var palArr))
                 foreach (var p in palArr.EnumerateArray())
                     palette.Add(new RgbColor(p.GetProperty("r").GetByte(), p.GetProperty("g").GetByte(), p.GetProperty("b").GetByte()));
-            return new AssetPixelData(width, height, pixels, palette);
+            int transparentIndex = root.TryGetProperty("transparentIndex", out var ti) ? ti.GetInt32() : -1;
+            return new AssetPixelData(width, height, pixels, palette, transparentIndex);
         }
         catch { return null; }
     }
@@ -225,6 +226,13 @@ public static class SceneRenderer
     {
         var palette = asset.Palette;
         if (palette.Count == 0) palette = new List<RgbColor> { RgbColor.White };
+
+        // Transparencia (spec 14): el asset declara opcionalmente qué índice de paleta
+        // es su fondo transparente (BuiltInIcons: 0 = transparente). Ese índice NO se
+        // pinta, para no borrar objetos que estén debajo. Las imágenes importadas y los
+        // iconos de color no lo declaran y pintan toda su paleta.
+        int transparentIndex = asset.TransparentIndex;
+
         for (int y = 0; y < asset.Height; y++)
         for (int x = 0; x < asset.Width; x++)
         {
@@ -233,6 +241,7 @@ public static class SceneRenderer
             if (idx >= asset.Pixels.Length) continue;
             int pi = asset.Pixels[idx];
             if (pi < 0 || pi >= palette.Count) continue;
+            if (pi == transparentIndex) continue;   // píxel transparente: no pinta
             RgbColor color = palette[pi];
             if (obj is IconObject icon && icon.PaletteMode == IconPaletteMode.Tint)
                 color = icon.Tint;
@@ -242,8 +251,9 @@ public static class SceneRenderer
 
     private sealed class AssetPixelData
     {
-        public AssetPixelData(int w, int h, byte[] pixels, List<RgbColor> palette)
-        { Width = w; Height = h; Pixels = pixels; Palette = palette; }
+        public AssetPixelData(int w, int h, byte[] pixels, List<RgbColor> palette, int transparentIndex = -1)
+        { Width = w; Height = h; Pixels = pixels; Palette = palette; TransparentIndex = transparentIndex; }
         public int Width; public int Height; public byte[] Pixels; public List<RgbColor> Palette;
+        public int TransparentIndex = -1;
     }
 }

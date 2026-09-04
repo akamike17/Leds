@@ -914,6 +914,8 @@ export class EditorState {
             width: asset.width, height: asset.height,
             pixels: asset.pixels,
             palette: (asset.palette || []).map(c => ({ r: c.r, g: c.g, b: c.b })),
+            ...(asset.transparentIndex != null && asset.transparentIndex >= 0
+                ? { transparentIndex: asset.transparentIndex } : {}),
         });
         const obj = {
             id: this.newId(), kind: 'icon', name: asset.name || 'Icono',

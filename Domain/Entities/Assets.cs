@@ -24,6 +24,13 @@ public sealed class IconAsset
     public byte[] Pixels { get; set; } = Array.Empty<byte>();   // 1 byte/px indexado
     public List<RgbColor> Palette { get; set; } = new() { RgbColor.White };
     public string PreviewBase64 { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Índice de la paleta que representa el fondo transparente (spec 14). Null/ausente
+    /// = sin transparencia (todo índice se pinta). BuiltInIcons lo fija a 0: el fondo
+    /// no borra los objetos que estén debajo.
+    /// </summary>
+    public int? TransparentIndex { get; set; }
 }
 
 /// <summary>Dibujo personalizado guardado en "Mi biblioteca".</summary>

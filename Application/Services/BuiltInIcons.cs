@@ -69,6 +69,7 @@ public static class BuiltInIcons
             Height = h,
             Pixels = pixels,
             Palette = palette,
+            TransparentIndex = 0,   // índice 0 = fondo transparente (no borra lo de debajo)
             License = new AssetLicenseInfo { Origin = "DSLetras built-in", License = "propio (original)", SourceUrl = string.Empty },
         };
     }
