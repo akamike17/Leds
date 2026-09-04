@@ -61,6 +61,29 @@ export class EditorState {
             opt.textContent = s.name || `Escena ${i + 1}`;
             sel.appendChild(opt);
         });
+        this.syncSceneDurationInput();
+    }
+
+    // Sincroniza el input de duración con la escena seleccionada.
+    syncSceneDurationInput() {
+        const scene = this.currentScene();
+        const el = document.getElementById('scene-duration');
+        if (el && scene) el.value = ((scene.duration ?? 5000) / 1000).toFixed(1);
+    }
+
+    // Cambia la duración de la escena seleccionada (markDirty + re-render).
+    setSceneDuration() {
+        const scene = this.currentScene();
+        const el = document.getElementById('scene-duration');
+        if (!scene || !el) return;
+        const secs = parseFloat(el.value);
+        if (!(secs > 0)) return;
+        this.history.captureOnce(this.project);
+        scene.duration = Math.round(secs * 1000);
+        this.history.commitPending();
+        this.updateSceneTimeLabel();
+        this.markDirty();
+        this.render();
     }
 
     render() {
@@ -316,9 +339,11 @@ export class EditorState {
         if (overflow) {
             // Animación Marquee: el renderer desplaza el texto dentro del viewport en
             // lugar de recortarlo; la Y se ancla dentro del lienzo para que sea visible.
+            // Valores NUMÉRICOS de los enums C# (AnimationKind.Marquee=2, Normal=1,
+            // Direction.Left=0, Slot.Main=1) para que el Save deserialize correctamente.
             obj.position.y = Math.min(pos.y, Math.max(0, this.canvas.height - 7));
             obj.animations = [{
-                kind: 'marquee', speedPreset: 'normal', direction: 'left',
+                kind: 2, speedPreset: 1, direction: 0,
                 loop: true, slot: 1,
             }];
         }
@@ -496,9 +521,11 @@ export class EditorState {
             b.addEventListener('click', () => this.loadLibraryTab(b.dataset.libTab));
         });
         document.getElementById('scene-select').addEventListener('change', () => {
+            this.syncSceneDurationInput();
             this.updateSceneTimeLabel();
             this.render();
         });
+        document.getElementById('scene-duration').addEventListener('change', () => this.setSceneDuration());
 
         // teclado: borrar/duplicar/undo/redo
         window.addEventListener('keydown', e => this.onKeyDown(e));

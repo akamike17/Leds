@@ -7,8 +7,16 @@ namespace DSLetreros.Controllers;
 
 public class PlaybackController : Controller
 {
+    private readonly ProjectService _projects;
+
+    public PlaybackController(ProjectService projects) => _projects = projects;
+
     [HttpGet]
-    public IActionResult Index() => View();
+    public IActionResult Index()
+    {
+        ViewBag.Projects = _projects.ListProjects();
+        return View();
+    }
 }
 
 /// <summary>

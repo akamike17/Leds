@@ -1,8 +1,24 @@
 ﻿@{
-    ViewData["Title"] = "Home Page";
+    ViewData["Title"] = "DSLetras";
 }
+<div class="p-4 text-center" style="max-width:720px;margin:0 auto">
+    <h1 class="display-5">DSLetras</h1>
+    <p class="text-muted mb-4">Diseño de letreros LED: texto, dibujo, iconos, imágenes, animación y envío.</p>
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+    <div class="row g-3 justify-content-center">
+        <div class="col-6 col-md-3">
+            <a class="btn btn-primary btn-lg d-block py-3" asp-controller="Projects" asp-action="New">Nuevo proyecto</a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a class="btn btn-outline-primary btn-lg d-block py-3" asp-controller="Projects" asp-action="Index">Abrir proyecto</a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a class="btn btn-outline-primary btn-lg d-block py-3" asp-controller="Library" asp-action="Index">Biblioteca</a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a class="btn btn-outline-primary btn-lg d-block py-3" asp-controller="Devices" asp-action="Index">Dispositivos</a>
+        </div>
+    </div>
+
+    <p class="text-muted small mt-4">Herramienta local (loopback) · persistencia .atlas · sin nube.</p>
 </div>

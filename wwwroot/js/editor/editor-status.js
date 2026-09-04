@@ -111,7 +111,32 @@ export class StatusHud {
     async send() {
         const projectId = document.getElementById('project-id')?.value;
         const targetId = this.activeTarget ? (this.activeTarget.serial || this.activeTarget.id) : null;
+
+        // NUNCA enviar una copia vieja de disco: primero se guarda el estado actual
+        // (canvas B nunca puede quedar desincronizado del device que recibe A).
+        if (this.state.dirty) {
+            this.setSend('Guardando antes de enviar…');
+            const saveRes = await fetch('/Projects/Save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': window.__antiforgery?.token || '',
+                },
+                body: JSON.stringify(this.state.project),
+            });
+            const saveData = await saveRes.json();
+            if (!saveData.success) {
+                this.setSend('Envío cancelado: ' + (saveData.message || 'no se pudo guardar'));
+                return;
+            }
+            this.state.dirty = false;
+            this.state.hud.setDirty(false);
+        }
         this.setSend('Enviando…');
+
+        // Escena actualmente seleccionada (no siempre la primera).
+        const sceneSel = document.getElementById('scene-select');
+        const sceneIndex = sceneSel ? parseInt(sceneSel.value, 10) || 0 : 0;
 
         try {
             const res = await fetch('/Deploy/Send', {
@@ -120,11 +145,11 @@ export class StatusHud {
                     'Content-Type': 'application/json',
                     'RequestVerificationToken': window.__antiforgery?.token || '',
                 },
-                body: JSON.stringify({ projectId, targetId }),
+                body: JSON.stringify({ projectId, targetId, sceneIndex }),
             });
             const data = await res.json();
             this.setSend(data.success
-                ? `Enviado (${data.phase})`
+                ? `Enviado (${data.phase}, escena ${(data.sceneIndex ?? sceneIndex) + 1})`
                 : `Envío fallido: ${data.message || 'desconocido'}`);
         } catch (e) {
             // Offline/retry: conserva el trabajo, sin corromper nada.

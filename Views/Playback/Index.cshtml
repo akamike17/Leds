@@ -1,5 +1,107 @@
-@{ ViewData["Title"] = "Reproducción"; }
+@{
+    ViewData["Title"] = "Reproducción";
+    var projects = ViewBag.Projects as IReadOnlyList<DSLetreros.Application.Services.ProjectSummary>;
+}
 <div class="p-3">
-    <h1 class="h4">Reproducción</h1>
-    <p class="text-muted">Compilar y enviar escenas (se implementará en un slice posterior).</p>
+    <h1 class="h4">Reproducción / despliegue</h1>
+    <p class="text-muted">Compila y envía una escena al target activo y muestra el resultado del despliegue.</p>
+
+    <div class="row g-2 align-items-end mb-3">
+        <div class="col-auto">
+            <label class="form-label small mb-0">Proyecto</label>
+            <select id="play-project" class="form-select form-select-sm">
+                @if (projects != null)
+                {
+                    foreach (var p in projects)
+                    {
+                        <option value="@p.Id.ToString("N")">@p.Name (@p.Canvas)</option>
+                    }
+                }
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-0">Escena</label>
+            <select id="play-scene" class="form-select form-select-sm">
+                <option value="0">Escena 1</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-0">Target</label>
+            <select id="play-target" class="form-select form-select-sm" aria-label="Target"></select>
+        </div>
+        <div class="col-auto">
+            <button type="button" class="btn btn-primary btn-sm" id="play-send">Compilar y enviar</button>
+        </div>
+    </div>
+
+    <div id="play-status" class="mb-2"></div>
+
+    <h2 class="h6 mt-4">Estado del target activo</h2>
+    <div id="play-target-status" class="text-muted">—</div>
 </div>
+
+@section Scripts {
+<script>
+(() => {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    const status = document.getElementById('play-status');
+    const targetStatus = document.getElementById('play-target-status');
+
+    function setStatus(ok, msg) {
+        status.className = ok ? 'mb-2 text-success' : 'mb-2 text-danger';
+        status.textContent = msg;
+    }
+
+    async function loadTargets() {
+        const res = await fetch('/Deploy/Discover');
+        const data = await res.json();
+        const sel = document.getElementById('play-target');
+        sel.innerHTML = '';
+        for (const t of data.targets || []) {
+            const o = document.createElement('option');
+            o.value = t.serial || t.id;
+            o.textContent = `${t.name} (${t.transport})`;
+            sel.appendChild(o);
+        }
+    }
+
+    async function refreshTargetStatus() {
+        const sel = document.getElementById('play-target');
+        const target = sel.value;
+        try {
+            const res = await fetch('/Deploy/Status' + (target ? `?target=${encodeURIComponent(target)}` : ''));
+            const data = await res.json();
+            targetStatus.textContent = `Estado: ${data.status || 'desconocido'}`;
+        } catch {
+            targetStatus.textContent = 'Estado: sin conexión';
+        }
+    }
+
+    document.getElementById('play-send').addEventListener('click', async () => {
+        const projectId = document.getElementById('play-project').value;
+        const sceneIndex = parseInt(document.getElementById('play-scene').value, 10) || 0;
+        const targetId = document.getElementById('play-target').value || null;
+        setStatus(true, 'Compilando y enviando…');
+        try {
+            const res = await fetch('/Deploy/Send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                body: JSON.stringify({ projectId, sceneIndex, targetId }),
+            });
+            const data = await res.json();
+            setStatus(data.success,
+                data.success
+                    ? `Desplegado. Fase: ${data.phase}; escena ${(data.sceneIndex ?? sceneIndex) + 1}; checksum ${data.checksum || '—'}`
+                    : `Fallo: ${data.message || 'desconocido'}`);
+            refreshTargetStatus();
+        } catch (e) {
+            setStatus(false, 'Fallo al enviar (sin conexión).');
+        }
+    });
+
+    loadTargets();
+    document.getElementById('play-target').addEventListener('change', refreshTargetStatus);
+    refreshTargetStatus();
+})();
+</script>
+}

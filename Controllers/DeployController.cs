@@ -46,7 +46,7 @@ public class DeployController : Controller
         });
     }
 
-    /// <summary>Envía la primera escena del proyecto al target indicado (pipeline completo).</summary>
+    /// <summary>Envía una escena del proyecto al target indicado (pipeline completo).</summary>
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Send([FromBody] SendRequest request, CancellationToken ct)
@@ -75,7 +75,9 @@ public class DeployController : Controller
         if (!open.Success || project == null || project.Scenes.Count == 0)
             return BadRequest(new { success = false, message = "Proyecto sin escenas." });
 
-        var scene = project.Scenes[0];
+        // Escena seleccionada (la que el usuario está editando), no siempre la primera.
+        var idx = Math.Clamp(request.SceneIndex, 0, project.Scenes.Count - 1);
+        var scene = project.Scenes[idx];
         var service = new DeploymentService();
         var result = await service.SendAsync(scene, project.Canvas, target, ct);
 
@@ -85,6 +87,7 @@ public class DeployController : Controller
             phase = result.Phase,
             message = result.Error,
             checksum = result.Checksum?.Value,
+            sceneIndex = idx,
         });
     }
 
@@ -106,4 +109,7 @@ public sealed class SendRequest
 
     /// <summary>Serial (identidad estable) o DeviceId hex del target. Nulo = simulador.</summary>
     public string? TargetId { get; set; }
+
+    /// <summary>Índice de la escena a enviar (la que está editando el usuario). 0 = primera.</summary>
+    public int SceneIndex { get; set; }
 }

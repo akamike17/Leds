@@ -1,5 +1,61 @@
 @{ ViewData["Title"] = "Dispositivos"; }
 <div class="p-3">
     <h1 class="h4">Dispositivos</h1>
-    <p class="text-muted">Detección y envío a controladores (se implementará en un slice posterior).</p>
+    <p class="text-muted">Controladores detectados y simulador local. Configura canales LAN/Serial en
+    <a asp-controller="Settings" asp-action="Index">Ajustes</a>.</p>
+
+    <div id="dev-status" class="mb-2"></div>
+    <table class="table table-sm table-striped" id="devices-table">
+        <thead>
+            <tr><th>Nombre</th><th>Transporte</th><th>Serial</th><th>Endpoint</th><th>Estado</th></tr>
+        </thead>
+        <tbody id="devices-body">
+            <tr><td colspan="5" class="text-muted">Cargando…</td></tr>
+        </tbody>
+    </table>
 </div>
+
+@section Scripts {
+<script>
+(() => {
+    const body = document.getElementById('devices-body');
+    const status = document.getElementById('dev-status');
+
+    async function load() {
+        status.textContent = '';
+        try {
+            const res = await fetch('/Settings/Targets');
+            const data = await res.json();
+            body.innerHTML = '';
+            if (!data.targets || data.targets.length === 0) {
+                body.innerHTML = '<tr><td colspan="5" class="text-muted">Sin dispositivos detectados.</td></tr>';
+                return;
+            }
+            for (const t of data.targets) {
+                const tr = document.createElement('tr');
+                const onlineBadge = t.online ? 'bg-success' : 'bg-warning';
+                tr.innerHTML = `
+                    <td><strong>${escapeHtml(t.name)}</strong></td>
+                    <td><span class="badge bg-secondary">${escapeHtml(t.transport)}</span></td>
+                    <td><code>${escapeHtml(t.serial)}</code></td>
+                    <td><small class="text-muted">${escapeHtml(t.endpoint || '')}</small></td>
+                    <td><span class="badge ${onlineBadge}">${escapeHtml(t.status || (t.online ? 'online' : 'offline'))}</span></td>`;
+                body.appendChild(tr);
+            }
+        } catch (e) {
+            body.innerHTML = '<tr><td colspan="5" class="text-danger">Error al cargar dispositivos.</td></tr>';
+        }
+    }
+
+    function escapeHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s == null ? '' : String(s);
+        return d.innerHTML;
+    }
+
+    load();
+    // refrescar cada 5s para reflejar online/offline
+    setInterval(load, 5000);
+})();
+</script>
+}

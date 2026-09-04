@@ -78,9 +78,26 @@ export class Inspector {
         else if (key === 'brightness') { obj.brightness = Math.max(0, Math.min(255, parseInt(el.value, 10) || 255)); }
         else if (key === 'timingStart') { obj.timing = obj.timing || {}; obj.timing.start = parseInt(el.value, 10) || 0; }
         else if (key === 'timingEnd') { obj.timing = obj.timing || {}; obj.timing.end = parseInt(el.value, 10) || 0; }
+        else if (key === 'animKind' || key === 'animSpeed' || key === 'animDir' || key === 'animSlot') {
+            const a = this.ensureAnim(obj);
+            const v = parseInt(el.value, 10) || 0;
+            if (key === 'animKind') a.kind = v;
+            else if (key === 'animSpeed') a.speedPreset = v;
+            else if (key === 'animDir') a.direction = v;
+            else if (key === 'animSlot') a.slot = v;
+        }
+        else if (key === 'animLoop') { this.ensureAnim(obj).loop = el.checked; }
 
         this.state.markDirty();
         this.state.render();
+    }
+
+    // Garantiza que el objeto tenga al menos una animación y devuelve la primera.
+    ensureAnim(obj) {
+        if (!obj.animations || obj.animations.length === 0) {
+            obj.animations = [{ kind: 0, speedPreset: 1, direction: 0, loop: false, slot: 1 }];
+        }
+        return obj.animations[0];
     }
 
     // Precarga el valor actual del objeto en el control (no lo destruye).
@@ -100,6 +117,14 @@ export class Inspector {
         else if (key === 'brightness') { el.value = obj.brightness ?? 255; }
         else if (key === 'timingStart') { el.value = obj.timing?.start ?? 0; }
         else if (key === 'timingEnd') { el.value = obj.timing?.end ?? 0; }
+        else if (key === 'animKind' || key === 'animSpeed' || key === 'animDir' || key === 'animSlot') {
+            const a = obj.animations && obj.animations[0];
+            if (key === 'animKind') el.value = a?.kind ?? 0;
+            else if (key === 'animSpeed') el.value = a?.speedPreset ?? 1;
+            else if (key === 'animDir') el.value = a?.direction ?? 0;
+            else if (key === 'animSlot') el.value = a?.slot ?? 1;
+        }
+        else if (key === 'animLoop') { el.checked = !!(obj.animations && obj.animations[0] && obj.animations[0].loop); }
     }
 
     rgbHex(c) {
@@ -180,6 +205,49 @@ export class Inspector {
                    <div class="form-check form-switch">
                      <input class="form-check-input" type="checkbox" data-field="locked">
                      <label class="form-check-label">Bloqueado</label>
+                   </div>`,
+        });
+
+        // Animación (spec 6): tipo, velocidad, dirección, loop y slot (valores numéricos = enums C#).
+        const anim = (obj.animations && obj.animations[0]) || null;
+        fields.push({
+            html: `<hr class="my-2">
+                   <label class="form-label small mb-0 fw-bold">Animación</label>
+                   <div class="row g-1">
+                     <div class="col-6">
+                       <label class="form-label small mb-0">Tipo</label>
+                       <select class="form-select form-select-sm" data-field="animKind">
+                         <option value="0">Fixed</option><option value="1">Blink</option>
+                         <option value="2">Marquee</option><option value="3">Slide</option>
+                         <option value="4">Pulse</option><option value="5">Wipe</option>
+                         <option value="6">Frame</option>
+                       </select>
+                     </div>
+                     <div class="col-6">
+                       <label class="form-label small mb-0">Velocidad</label>
+                       <select class="form-select form-select-sm" data-field="animSpeed">
+                         <option value="0">Slow</option><option value="1">Normal</option>
+                         <option value="2">Fast</option>
+                       </select>
+                     </div>
+                     <div class="col-6">
+                       <label class="form-label small mb-0">Dirección</label>
+                       <select class="form-select form-select-sm" data-field="animDir">
+                         <option value="0">Left</option><option value="1">Right</option>
+                         <option value="2">Up</option><option value="3">Down</option>
+                       </select>
+                     </div>
+                     <div class="col-6">
+                       <label class="form-label small mb-0">Slot</label>
+                       <select class="form-select form-select-sm" data-field="animSlot">
+                         <option value="0">Entrance</option><option value="1">Main</option>
+                         <option value="2">Exit</option>
+                       </select>
+                     </div>
+                   </div>
+                   <div class="form-check form-switch mt-1">
+                     <input class="form-check-input" type="checkbox" data-field="animLoop">
+                     <label class="form-check-label">Loop</label>
                    </div>`,
         });
 

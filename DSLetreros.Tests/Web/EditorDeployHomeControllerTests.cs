@@ -64,12 +64,16 @@ public class EditorDeployHomeControllerTests : IClassFixture<DsLetrasFactory>
     // ---------- HomeController ----------
 
     [Fact]
-    public async Task Home_Index_redirects_to_projects()
+    public async Task Home_Index_returns_portada()
     {
         var resp = await _client.GetAsync("/");
-        Assert.Equal(HttpStatusCode.Redirect, resp.StatusCode);
-        // RedirectToAction("Index","Projects") produce "/Projects" (Index es acción por defecto).
-        Assert.NotNull(resp.Headers.Location);
+        // La portada de DSLetras es una vista real (accesos directos), no un redirect.
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var html = await resp.Content.ReadAsStringAsync();
+        Assert.Contains("DSLetras", html);
+        Assert.Contains("Nuevo proyecto", html);
+        Assert.Contains("Biblioteca", html);
+        Assert.Contains("Dispositivos", html);
     }
 
     [Fact]

@@ -14,9 +14,10 @@ namespace DSLetreros.Controllers
         }
 
         public IActionResult Index()
-        {
-            return RedirectToAction("Index", "Projects");
-        }
+                {
+                    // Portada mínima de DSLetras (spec P1 UX): accesos directos, no redirect.
+                    return View();
+                }
 
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult Error()
