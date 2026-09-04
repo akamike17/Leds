@@ -74,9 +74,28 @@ public sealed class ProjectService
         return await _store.OpenAsync(path, ct);
     }
 
-    /// <summary>Abre un proyecto por ruta de disco ya resuelta (uso interno/tests).</summary>
+    /// <summary>
+    /// Abre un proyecto por ruta de disco ya resuelta (uso interno/tests). Exige
+    /// containment canónico DENTRO de ProjectsRoot (v2.md §6): una ruta exterior
+    /// es rechazada, evitando la regresión de abrir archivos arbitrarios del disco.
+    /// </summary>
     public async Task<(PersistenceResult, Project?)> OpenAsync(string path, CancellationToken ct = default)
-        => await _store.OpenAsync(path, ct);
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return (PersistenceResult.Fail("Ruta vacía."), null);
+
+        string canonical;
+        try
+        {
+            canonical = ProjectPaths.EnsureWithin(_projectsRoot, path);
+        }
+        catch (ProjectPathException ex)
+        {
+            return (PersistenceResult.Fail(ex.Message), null);
+        }
+
+        return await _store.OpenAsync(canonical, ct);
+    }
 
     /// <summary>Lista proyectos guardados (resumen).</summary>
     public IReadOnlyList<ProjectSummary> ListProjects()

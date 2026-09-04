@@ -1,71 +1,112 @@
-# FINAL AUDIT — v2.md (cierre)
+# FINAL AUDIT — v2.md (revisión correctiva final)
 
-Auditoría funcional correctiva según `v2.md`. Estado al cierre de esta pasada.
+Auditoría funcional correctiva según `V2.md`. Estado al CIERRE de esta pasada.
 
 ## SHAs
 
-- SHA inicial (registrado al entrar): `0bec382457cdb106a4ac8a1c5c528830bcae4600`
-- SHA final local: `8826792c3136cab8bd4be3d14f11718d3ff221ba`
-- NO push (según v2.md §0 y §25).
+- SHA inicial (registrado al entrar): `4de2261ecfb052399f9a614fba4516220216ba8b`
+- SHA final local: `9c8b9e3c2ab16135b453074bfee055a5829f0258`
+- Push: **pendiente — NO declarar cierre hasta que el RUN remoto de GitHub Actions sea GREEN.**
 
-## Commits de esta pasada (v2.md)
+## 1. Causa raíz del R2 (CI Run 33913167064)
 
-| SHA | Descripción |
-|---|---|
-| `3510dfb` | feat(editing): Group/Ungroup/Align + contrato de capa destino (Tarea 1+2) |
-| `f5eb974` | fix(project): cierre con cambios sin guardar Guardar/Descartar/Cancelar (Tarea 3) |
-| `bdc5dae` | fix(render): paridad pixel a pixel C#↔JS — elipse + enum Shape (Tarea 4/R5) |
-| `59f11d7` | test(R2/R3): 1 DrawingObject = 1 Undo; casos hostiles básicos |
-| `4fcf4de` | docs: FINAL_AUDIT.md checkpoint |
-| `57efb33` | test(R1/history): R1 exacto en timestamps + historial 100 ops |
-| `8826792` | test(escenas/capas + R3): aislamiento + casos hostiles |
+**Reproducción:** `tests/e2e/specs/acceptance-r1-r2.spec.js` R2, `#library-grid .card`
+no encontrado tras "Guardar en biblioteca" — reproducido localmente SÓLO con
+`App_Data` limpio (equivalente al checkout limpio de CI Linux), exactamente igual al
+error remoto (`element(s) not found`).
 
-## Bugs encontrados → causa raíz → corrección
+**Causa raíz:** en el spec R2, el `d.set('CorazonR2')` se ejecutaba DESPUÉS de
+`page.getByRole('button', { name: 'Guardar en biblioteca' }).click()`. Como
+`saveToLibrary()` dispara `window.prompt()` de forma SÍNCRONA (bloquea el event loop),
+el prompt se abría inmediatamente con `pending` aún vacío (`''`). El handler
+`dialog.accept('')` retornaba texto vacío → `saveToLibrary()` hacía
+`if (!name) return` y **nunca emitía el POST** → la biblioteca quedaba vacía
+("No hay dibujos guardados"). No es un defecto de producción: es un **bug de orden en
+el test** (el prompt síncrono exige fijar el texto ANTES del click; R1 ya lo hacía bien).
 
-1. **Group/Ungroup/Align ausentes** (P1). → `GroupId` + `ObjectGroup.Id` + `Scene.Groups`
-   + `EditingService.GroupObjects/Ungroup/MoveGroup/AlignObjects` + UI + validación + persistencia.
-2. **`EnsureLayer()` siempre primera capa** (P0). → contrato capa destino explícito.
-3. **Navegación con cambios perdía trabajo** (P0). → modal Guardar/Descartar/Cancelar.
-4. **Divergencia elipse C#↔JS** (R5): C# pintaba interior con stroke (elipse rellena).
-   → `if (filled||border) SetPixel(border?stroke:fill)`.
-5. **Contrato ShapeKind invertido** (R5): JS Line=1/Rect=0 vs C# Line=0/Rect=1/Ellipse=2
-   → rectángulo se compilaba como línea diagonal. Alineado a 0/1/2.
+**Corrección (sin sleeps/retries/skips):** reordenar `d.set('CorazonR2')` ANTES del
+`click()`. Test determinista: fallaba (7.2s) antes del fix, pasa (3.1s) después, con
+App_Data limpio.
 
-## Matriz MASTER requirement → evidencia → estado
+## 2. CI reestructurado (jobs independientes)
 
-| Requisito | Evidencia | Estado |
-|---|---|---|
-| Group/Ungroup (ObjectGroup IDs resolubles, no visual) | EditingServiceTests (5) + DrawingPersistence roundtrip + E2E group-align | PASS |
-| AlignObjects (6 direcciones) | EditingServiceTests (2) + E2E group-align | PASS |
-| Capa destino explícita | EditingServiceTests (2) | PASS |
-| Cierre sin guardar Guardar/Descartar/Cancelar | E2E unsaved-close | PASS |
-| Paridad C#↔JS RGB24 exacta | E2E parity-r5 (texto/elipse/rect+line/icono) | PASS |
-| R1 exacto (timings blink/marquee en timestamps) | R1ExactTests (3) | PASS |
-| R2: 1 DrawingObject + 1 Undo | E2E r2-r3 | PASS |
-| R3 hostil (undo vacío, doble Send, Save repetido, posición negativa) | E2E r2-r3 + r3-hostile | PASS |
-| R4 LastKnownGood transaccional | TransactionalStateMachineContractTests + SimulatorTargetLastKnownGoodTests (ya existentes, verificados) | PASS |
-| R5 matriz (texto/elipse/rect/line/icono) | parity-r5 | PASS |
-| Historial 100 ops (Undo/Redo/Save/Open) | E2E history-long | PASS |
-| Escenas/capas aislamiento | E2E scenes-layers | PASS |
+`.github/workflows/ci.yml` ahora es un grafo de jobs independientes — cada gate SIEMPRE
+corre (aunque otro falle) y un job final `gates` agrega todos y falla si cualquiera de
+los gates obligatorios falló:
 
-## Resultados
+build (warnaserror) · test-dotnet · e2e · mutation · coverage (umbral) ·
+dependency-audit (dotnet vulnerable + npm audit) · static-analysis · gates.
 
-- `dotnet build -c Release`: 0 errores, 0 warnings.
-- Tests .NET: 520/520 pass.
-- E2E Playwright: 49/49 pass, estable en **3 corridas consecutivas** (sin flakes).
-- Dependency audit: `dotnet list package --vulnerable` = 0; `npm audit` = 0.
-- Sin `href="#"`, TODO, FIXME, NotImplemented, placeholder ni stub en vistas alcance V1.
+## 3. Mutation
 
-## Limitaciones / NO verificado (requiere hardware físico)
+`stryker-config.json`: `break` pasó de `0` (sin gate) a `55` (no-regresión, basado en el
+baseline real). Desglose del run real (ver `MUTATION-JUSTIFICATION.md`):
 
-- R4 transaccional sobre hardware REAL (placa LED serie/Ethernet/USB/Wi-Fi): cubierto
-  por `SimulatorTarget`/`Firmware`/`ChannelDisplayTarget` en tests deterministas de
-  máquina de estados + LastKnownGood, NO contra dispositivo físico.
-- Soak y performance (v2.md §21/§22) no ejecutados en esta pasada (requieren tiempo
-  de ejecución medido); no hay evidencia de fuga/crecimiento en las corridas actuales.
+- total 4069 · killed 868 · survived 325 · timeout 74 · no-coverage 314 ·
+  compile-errors 204 · ignored 373 · **score Stryker 59.58%** (killed/tested 68.51%).
+- Exclusión `update` **conservada** (justificación técnica: timeouts de bucle infinito,
+  cero señal). Añadido `Infrastructure/Security/*` al scope.
 
-## Siguiente bloque ejecutable (si se continúa)
+## 4. FINAL_AUDIT.md (este archivo)
 
-v2.md §21 Soak (200 Save/Open, 100 Send, 100 Undo/Redo) y §22 Performance (medir
-render/save/compile/send en 16x16/32x16/64x32), luego bloque 13 (biblioteca con
-transparencia sobre patrones) y 14 (fuentes: golden Ñ/Ü/¿/¡/%/&/@/#).
+Actualizado con SHAs reales, número exacto de commits, causa raíz R2, breakdown de
+mutación y métricas locales. NO se declara PASS del CI remoto hasta que GitHub Actions
+esté GREEN.
+
+## 5. Autosave crash safety
+
+`AtlasProjectStore.AutosaveAsync` ahora hace reemplazo atómico **recuperable**: mueve el
+autosave anterior a `.autosave.bak` antes de activar el nuevo, restaura el anterior si
+la activación falla, y descarta el backup sólo tras validar el nuevo. Fault-injection:
+`AtlasStoreCrashSafetyTests` (2 tests nuevos) inyecta fallo justo en la ventana entre el
+retiro del autosave viejo y la activación del nuevo.
+
+## 6. Project path API
+
+`ProjectService.OpenAsync(string path)` ahora exige **containment canónico** vía
+`ProjectPaths.EnsureWithin(_projectsRoot, path)`: una ruta exterior se rechaza con
+fail limpio. Tests: ruta exterior rechazada + ruta interior aceptada.
+
+## 7. Local security boundary
+
+`LoopbackPolicy` (nuevo): por defecto loopback; `ASPNETCORE_URLS` con interfaz
+no-loopback exige opt-in `DS_LETRAS_ALLOW_LAN=true`, si no, **fail-fast** al arranque.
+Testeado (`LoopbackPolicyTests`, 4 tests). Uso local normal intacto.
+
+## 8. Cleanup
+
+- `DeployController` ahora inyecta `DeploymentService` por DI (ya no `new`).
+- `StubControllers.cs` separado en `PlaybackController.cs` + `SettingsController.cs`.
+- `DeviceProtocol`/`DeviceChannels` validan `version >= MinProtocolVersion` (ya no
+  aceptan 0 implícito). Tests de versión 0 añadidos.
+- `MaxResponseBytes` reducido de 64 MiB → 1 MiB (defendible para escena LED; evita DoS).
+- `Configure<IHttpMaxRequestBodySizeFeature>` eliminado (no producía límite global;
+  Kestrel `Limits.MaxRequestBodySize` es el límite real).
+
+## 9. Soak + performance (automatizado)
+
+`SoakAndPerformanceTests.cs`: 200 Save/Open (con Δmem + tiempo), 100 Send al simulador
+(staging vacío, Δmem), 100 add/delete (equivalentes undo/redo), y performance
+render/save/open/compile/send en 16x16/32x16/64x32 con umbrales defensivos. Números
+reales vía ITestOutputHelper; umbrales de regresión (no micro-optimización).
+
+## 10. Cierre — resultados locales medidos
+
+- `dotnet build -c Release -warnaserror`: 0 errores, 0 warnings.
+- Tests .NET: **536/536 pass**.
+- E2E Playwright: **49/49 pass, estable en 3 corridas consecutivas**.
+- Dependency audit: `dotnet list package --vulnerable` = 0.
+- Coverage: línea **83.41%** (2529/3032), rama **74.57%** (1056/1416).
+- Mutation: score **59.58%** (break 55).
+
+## NO VERIFICADO (requiere hardware físico)
+
+- Transporte físico real (placa LED serie/Ethernet): cubierto por HIL (sockets loopback)
+  y targets en memoria; **NO VERIFICADO** contra hardware. Se separa explícitamente
+  SIMULATOR VERIFIED vs HARDWARE NOT VERIFIED.
+
+## Pendientes reales / blockers
+
+- **CI remoto (GitHub Actions): PENDIENTE.** El push correctivo debe producir un run
+  GREEN antes de declarar cierre (v2.md §10). Run ID se registrará al terminar.
+- Hardware físico real: BLOCKED (sin dispositivo).

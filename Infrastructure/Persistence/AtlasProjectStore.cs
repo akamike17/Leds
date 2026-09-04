@@ -150,7 +150,10 @@ public sealed class AtlasProjectStore
 
     /// <summary>
     /// Autosave separado: nunca toca el original, escribe un hermano `.autosave`
-    /// con el MISMO mecanismo crash-safe (temp + validación + move).
+    /// con el MISMO mecanismo crash-safe (temp + validación + move). Incluye backup
+    /// recuperable del autosave ANTERIOR (v2.md §5): el reemplazo ya no tiene una
+    /// ventana de pérdida total — si la activación del nuevo autosave falla, el
+    /// anterior se restaura desde `&lt;id&gt;.atlas.autosave.bak`.
     /// </summary>
     public async Task<PersistenceResult> AutosaveAsync(Project project, string targetPath, CancellationToken ct = default)
     {
@@ -175,9 +178,45 @@ public sealed class AtlasProjectStore
                 return PersistenceResult.Fail("Autosave temp no valida: " + probe.Result.Message);
             }
 
-            FailPoint?.Invoke("before-autosave-move");
-            SafeDeleteDir(autoDir);
-            Directory.Move(tempDir, autoDir);
+            // Reemplazo atómico recuperable del autosave (espejo de SaveAsync §3):
+            // conservar el autosave anterior como backup hasta que el nuevo valide.
+            bool existed = Directory.Exists(autoDir);
+            string? backupDir = null;
+            if (existed)
+            {
+                backupDir = autoDir + BackupSuffix;
+                SafeDeleteDir(backupDir);
+                FailPoint?.Invoke("before-autosave-rename");
+                Directory.Move(autoDir, backupDir);
+            }
+
+            try
+            {
+                FailPoint?.Invoke("before-autosave-move");
+                Directory.Move(tempDir, autoDir);
+            }
+            catch
+            {
+                if (existed && backupDir != null && Directory.Exists(backupDir) && !Directory.Exists(autoDir))
+                {
+                    try { Directory.Move(backupDir, autoDir); }
+                    catch { /* el backup queda en disco para recuperación manual */ }
+                }
+                SafeDeleteDir(tempDir);
+                throw;
+            }
+
+            // Validado el NUEVO autosave en su sitio, se descarta el backup anterior.
+            if (existed && backupDir != null)
+            {
+                var finalProbe = await OpenCoreAsync(autoDir, ct);
+                if (finalProbe.Result.Success)
+                {
+                    SafeDeleteDir(backupDir);
+                }
+                // else: se conserva el backup anterior para recuperación manual.
+            }
+
             return PersistenceResult.Ok(autoDir);
         }
         catch (Exception ex)

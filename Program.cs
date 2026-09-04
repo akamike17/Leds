@@ -25,24 +25,36 @@ builder.Services.AddScoped<DSLetreros.Application.Services.LibraryService>();
 builder.Services.AddScoped<DSLetreros.Application.Services.EditingService>();
 builder.Services.AddScoped<DSLetreros.Application.Services.DeploymentService>();
 
-// Seguridad (spec 21): DSLetras es una herramienta LOCAL. Por defecto el
-// servidor se enlaza SOLO a loopback (127.0.0.1), de forma que el control de
-// dispositivos jamás quede expuesto a interfaces externas por accidente. Un
-// operador puede deliberadamente enlazar a una interfaz concreta vía
-// ASPNETCORE_URLS, pero el valor por defecto (sin config) es loopback.
-if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
+// Seguridad (spec 21 + v2.md §7): DSLetras es una herramienta LOCAL. Por defecto
+// el servidor se enlaza SOLO a loopback (127.0.0.1), de forma que el control de
+// dispositivos jamás quede expuesto a interfaces externas por accidente.
+//
+// Boundary explícito: para exponer la app fuera de loopback el operador DEBE fijar
+// la variable DS_LETRAS_ALLOW_LAN=true *y* especificar ASPNETCORE_URLS con una
+// interfaz no-loopback. Sin ese opt-in inequívoco, cualquier ASPNETCORE_URLS
+// que no sea loopback es rechazado al arranque (fail-fast), en lugar de enlazar
+// silenciosamente a la red local sin autenticación.
+var allowLan = DSLetreros.Infrastructure.Security.LoopbackPolicy.LanExplicitlyAllowed(
+    Environment.GetEnvironmentVariable(DSLetreros.Infrastructure.Security.LoopbackPolicy.AllowLanVariable));
+var configuredUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+if (string.IsNullOrEmpty(configuredUrls))
 {
     builder.WebHost.UseUrls("http://127.0.0.1:5099");
 }
+else if (!allowLan && DSLetreros.Infrastructure.Security.LoopbackPolicy.ContainsNonLoopbackUrl(configuredUrls))
+{
+    throw new InvalidOperationException(
+        "ASPNETCORE_URLS expone una interfaz no-loopback sin opt-in. Fija DS_LETRAS_ALLOW_LAN=true para permitirlo explícitamente (sin autenticación, sólo red de confianza).");
+}
 
-// Seguridad (spec 21): tope de tamaño de request y límites de formulario/kestrel.
-// Rechaza payloads gigantes antes de llegar al dominio (evita OOM en fuzz).
-builder.Services.Configure<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>(
-    o => o.MaxRequestBodySize = 64 * 1024 * 1024); // 64 MiB
+// Seguridad (spec 21): tope de tamaño de request. El límite REAL lo impone Kestrel
+// (Limits.MaxRequestBodySize); un Configure<IHttpMaxRequestBodySizeFeature> por DI
+// NO produce ningún límite global (la feature se resuelve por-request vía middleware),
+// así que se eliminó (v2.md §8) para no aparentar una protección que no existe.
 builder.WebHost.ConfigureKestrel(k =>
 {
-    k.Limits.MaxRequestBodySize = 64 * 1024 * 1024;
-    k.Limits.MaxRequestBufferSize = 64 * 1024;
+    k.Limits.MaxRequestBodySize = 64 * 1024 * 1024;   // 64 MiB por request
+    k.Limits.MaxRequestBufferSize = 64 * 1024;        // 64 KiB de buffer de request
 });
 
 // Simulador local: IDisplayTarget en memoria (mismo contrato que el hardware).

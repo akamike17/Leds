@@ -126,6 +126,51 @@ public class ProjectServiceTests
     }
 
     [Fact]
+    public async Task OpenAsync_rejects_path_outside_projects_root()
+    {
+        // v2.md §6: OpenAsync(string path) no debe abrir rutas arbitrarias del disco;
+        // toda ruta debe quedar estrictamente dentro de ProjectsRoot (containment).
+        var (svc, root) = NewService();
+        var outside = Path.Combine(Path.GetTempPath(), $"outside-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outside);
+        try
+        {
+            // Ruta exterior válida (existe un .atlas legítimo fuera del root).
+            var extStore = new AtlasProjectStore();
+            var extProject = svc.CreateProject("Exterior", 8, 8);
+            var extPath = Path.Combine(outside, $"{extProject.Id.Value:N}.atlas");
+            await extStore.SaveAsync(extProject, extPath);
+
+            var (result, project) = await svc.OpenAsync(extPath);
+            Assert.False(result.Success, "una ruta exterior debe rechazarse");
+            Assert.Null(project);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+            if (Directory.Exists(outside)) Directory.Delete(outside, true);
+        }
+    }
+
+    [Fact]
+    public async Task OpenAsync_accepts_path_within_projects_root()
+    {
+        // Contraparte positiva: una ruta DENTRO del root sí se abre.
+        var (svc, root) = NewService();
+        try
+        {
+            var p = svc.CreateProject("Dentro", 16, 8);
+            await svc.SaveAsync(p);
+            var path = svc.ResolveProjectPath(p.Id.Value);
+
+            var (result, project) = await svc.OpenAsync(path);
+            Assert.True(result.Success, result.Message);
+            Assert.Equal("Dentro", project!.Name);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task OpenByIdAsync_returns_fail_when_missing()
     {
         var (svc, root) = NewService();

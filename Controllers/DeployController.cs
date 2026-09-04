@@ -17,15 +17,18 @@ public class DeployController : Controller
     private readonly ProjectService _projects;
     private readonly DSLetreros.Domain.Deployment.SimulatorTarget _simulator;
     private readonly DeviceDiscoveryService _discovery;
+    private readonly DeploymentService _deployment;
 
     public DeployController(
         ProjectService projects,
         DSLetreros.Domain.Deployment.SimulatorTarget simulator,
-        DeviceDiscoveryService discovery)
+        DeviceDiscoveryService discovery,
+        DeploymentService deployment)
     {
         _projects = projects;
         _simulator = simulator;
         _discovery = discovery;
+        _deployment = deployment;
     }
 
     [HttpGet]
@@ -78,8 +81,7 @@ public class DeployController : Controller
         // Escena seleccionada (la que el usuario está editando), no siempre la primera.
         var idx = Math.Clamp(request.SceneIndex, 0, project.Scenes.Count - 1);
         var scene = project.Scenes[idx];
-        var service = new DeploymentService();
-        var result = await service.SendAsync(scene, project.Canvas, target, ct);
+        var result = await _deployment.SendAsync(scene, project.Canvas, target, ct);
 
         return Json(new
         {

@@ -80,9 +80,11 @@ test('R2 dibujo: corazón continuo -> mover -> blink -> biblioteca -> borrar -> 
   await page.locator('#inspector-content [data-field="animKind"]').selectOption('1');
   await page.waitForTimeout(100);
 
-  // 4) Guardar en biblioteca (dibujo seleccionado)
-  await page.getByRole('button', { name: 'Guardar en biblioteca' }).click();
+  // 4) Guardar en biblioteca (dibujo seleccionado). El prompt es SÍNCRONO:
+  // d.set() debe ejecutarse ANTES del click, o el prompt se acepta con texto vacío
+  // y saveToLibrary() retorna sin guardar (if (!name) return).
   d.set('CorazonR2');
+  await page.getByRole('button', { name: 'Guardar en biblioteca' }).click();
   await page.waitForTimeout(200);
 
   // 5) Borrar del proyecto (tecla Delete)

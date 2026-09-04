@@ -65,6 +65,15 @@ public class DeviceProtocolAndDiscoveryTests
         Assert.Throws<ProtocolException>(() => DeviceProtocol.Unwrap(frame));
     }
 
+    [Fact]
+    public void Protocol_rejects_version_below_minimum()
+    {
+        // v2.md §8: la versión 0 (implícita/ausente) NO es una versión soportada.
+        var frame = DeviceProtocol.Wrap(DeviceProtocol.OpHello, 0, Array.Empty<byte>());
+        frame[4] = 0; // por debajo del mínimo soportado
+        Assert.Throws<ProtocolException>(() => DeviceProtocol.Unwrap(frame));
+    }
+
     // ---- Upload transaccional vía dispositivo fake (LAN y Serial, mismo contrato) ----
 
     public static readonly TheoryData<Func<FakeDeviceChannel, IDisplayTarget>> TargetFactories = new()

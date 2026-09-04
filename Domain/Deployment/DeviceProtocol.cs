@@ -14,6 +14,7 @@ public static class DeviceProtocol
 {
     public const string Magic = "DSL1";
     public const int CurrentProtocolVersion = 1;
+    public const int MinProtocolVersion = 1;
 
     // ---- Encuadre (framing) ----
     // Cada mensaje va precedido por un header binario fijo:
@@ -57,6 +58,8 @@ public static class DeviceProtocol
         var version = frame[4];
         if (version > CurrentProtocolVersion)
             throw new ProtocolException($"Versión de protocolo {version} no soportada.");
+        if (version < MinProtocolVersion)
+            throw new ProtocolException($"Versión de protocolo {version} no soportada (mínima {MinProtocolVersion}).");
         var op = frame[5];
         var flags = frame[6];
         var len = BitConverter.ToInt32(frame.Slice(7, 4));

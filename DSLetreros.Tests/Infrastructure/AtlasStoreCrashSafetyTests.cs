@@ -124,6 +124,76 @@ public class AtlasStoreCrashSafetyTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
 
+    // ------------------------- Autosave crash safety (v2.md §5) -------------------------
+
+    [Fact]
+    public async Task Autosave_failure_after_rename_restores_previous_autosave()
+    {
+        // v2.md §5: el autosave anterior ya no se pierde en la ventana entre
+        // SafeDeleteDir(autoDir) y Directory.Move(tempDir, autoDir). Ahora el autosave
+        // viejo se mueve a .bak y, si la activación del nuevo falla, se restaura.
+        var store = new AtlasProjectStore();
+        var root = NewTempRoot();
+        Directory.CreateDirectory(root);
+        var target = Path.Combine(root, "p.atlas");
+        var autoDir = target + AtlasProjectStore.AutosaveSuffix;
+        try
+        {
+            await store.SaveAsync(SampleProject("Original"), target);
+
+            // Primer autosave (AutoV1) válido en disco.
+            var first = await store.AutosaveAsync(SampleProject("AutoV1"), target);
+            Assert.True(first.Success, first.Message);
+            Assert.True(Directory.Exists(autoDir));
+
+            // Inyectar fallo justo después de mover el autosave viejo a .bak y
+            // antes de activar el nuevo (la ventana de pérdida de datos del §5).
+            store.FailPoint = phase => phase == "before-autosave-move" ? throw new IOException("fault") : false;
+
+            var second = await store.AutosaveAsync(SampleProject("AutoV2"), target);
+            Assert.False(second.Success);
+
+            // El autosave anterior debe haberse RESTAURADO, no perdido.
+            Assert.True(Directory.Exists(autoDir), "autosave anterior debe restaurarse");
+            Assert.False(Directory.Exists(autoDir + AtlasProjectStore.BackupSuffix),
+                "el backup debe haberse movido de vuelta a autosave");
+
+            // Abrir el autosave directamente: su contenido es AutoV1 (el anterior).
+            var (openAuto, auto) = await store.OpenAsync(autoDir);
+            Assert.True(openAuto.Success, openAuto.Message);
+            Assert.Equal("AutoV1", auto!.Name);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Autosave_successful_replace_discards_backup()
+    {
+        var store = new AtlasProjectStore();
+        var root = NewTempRoot();
+        Directory.CreateDirectory(root);
+        var target = Path.Combine(root, "p.atlas");
+        var autoDir = target + AtlasProjectStore.AutosaveSuffix;
+        try
+        {
+            await store.SaveAsync(SampleProject("Original"), target);
+
+            var first = await store.AutosaveAsync(SampleProject("AutoV1"), target);
+            Assert.True(first.Success, first.Message);
+
+            // Reemplazo exitoso: el backup del autosave anterior se descarta.
+            var second = await store.AutosaveAsync(SampleProject("AutoV2"), target);
+            Assert.True(second.Success, second.Message);
+            Assert.False(Directory.Exists(autoDir + AtlasProjectStore.BackupSuffix));
+
+            // El autosave en disco es ahora AutoV2 (el principal queda intacto).
+            var (openAuto, auto) = await store.OpenAsync(autoDir);
+            Assert.True(openAuto.Success, openAuto.Message);
+            Assert.Equal("AutoV2", auto!.Name);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
     // ------------------------- Path traversal -------------------------
 
     [Fact]

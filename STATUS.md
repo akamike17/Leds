@@ -97,28 +97,33 @@ Evidencia vía Playwright real + `getImageData` (píxeles observables), no
 
 ## Gates finales
 
-- `dotnet build -c Release`: 0 errores, 0 warnings.
-- Tests .NET: 507/507 pass (estable en 3 corridas).
-- E2E Playwright (33 specs, framebuffer real + coordenadas exactas): 33/33 pass.
+- `dotnet build -c Release -warnaserror`: 0 errores, 0 warnings.
+- Tests .NET: **536/536 pass** (estable en 3 corridas).
+- E2E Playwright (49 specs, framebuffer real + coordenadas exactas): **49/49 pass
+  en 3 corridas consecutivas** (sin flakes); incluye la corrección del R2 (order del
+  prompt síncrono, ver FINAL_AUDIT.md §1).
+- Coverage (coverlet): línea **83.41%** (2529/3032), rama **74.57%** (1056/1416).
+- Mutation (Stryker): score **59.58%** (break 55; ver MUTATION-JUSTIFICATION.md).
+- Dependency audit: `dotnet list package --vulnerable` = **0**.
 - Sin errores de consola JS ni HTTP 4xx/5xx inesperados (gate dedicado).
 - Sin botones muertos ni placeholders "se implementará después" en el alcance V1.
 
 ## Pendientes reales (NO verificados)
 
+- **CI remoto (GitHub Actions): PENDIENTE** — el push correctivo debe producir un run
+  GREEN antes del cierre. El CI se reestructuró en jobs independientes (v2.md §2).
 - Hardware físico real (placa LED serie/Ethernet): el simulador (`SimulatorTarget`)
   y el firmware modelado (`Firmware`) cubren el contrato completo en tests
-  deterministas, pero NO se probó contra un dispositivo físico. Requiere HW.
+  deterministas, pero NO se probó contra un dispositivo físico. Requiere HW
+  (SIMULATOR VERIFIED, HARDWARE NOT VERIFIED).
 - Transports USB/Serial/Wi-Fi reales: los canales LAN/Serial se construyen desde
   la configuración de Settings y se prueban en loopback TCP/in-memory, no contra
   un dispositivo real.
 
-## Commits de esta auditoría (sin push)
+## Commits de la pasada correctiva (v2.md)
 
-- `94ced88` fix(editor): P0 funcional (fill/eraser/preview/rect-select/inspector/biblioteca/imagen/no-clipping).
-- `a5f5460` feat(P1): send correcto + timeline/animación + Devices/Playback/Home.
-- `68bce7b` feat(P1): autosave conectado + UI escenas/capas.
-- `ce2a74a` fix(contrato píxeles): byte[] base64 ↔ array JS + R1/R2 acceptance.
-- `3cf127c` test(E2E píxeles exactos) + fix(overlay selección separado del framebuffer).
-- `6ec62b8` feat(P0 biblioteca): imágenes importadas listables e insertables.
-- `a458acf` fix(iconos): transparencia real — el fondo del icono no borra objetos debajo.
-- `f93d5a1` fix(P1): locked/visible respetados + E2E de múltiples iconos.
+Ver `FINAL_AUDIT.md` para el detalle de causa raíz y correcciones. El commit
+correctivo de esta pasada consolida: fix R2 (orden de prompt), CI en jobs,
+autosave crash-safe, containment de OpenAsync(path), boundary loopback, cleanup
+(DeploymentService DI / controllers / protocol version / MaxResponseBytes), soak +
+performance, y métricas honestas (mutation/coverage/audit).

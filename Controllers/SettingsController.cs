@@ -5,20 +5,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace DSLetreros.Controllers;
 
-public class PlaybackController : Controller
-{
-    private readonly ProjectService _projects;
-
-    public PlaybackController(ProjectService projects) => _projects = projects;
-
-    [HttpGet]
-    public IActionResult Index()
-    {
-        ViewBag.Projects = _projects.ListProjects();
-        return View();
-    }
-}
-
 /// <summary>
 /// Ajustes del dispositivo (spec 18/21): configuración y enumeración de canales
 /// LAN/Serial reales, y disparo de descubrimiento sobre <see cref="DeviceDiscoveryService"/>.

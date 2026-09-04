@@ -41,7 +41,7 @@ public class TcpDeviceChannelHilTests
     {
         var (channel, server) = await StartServer(async stream =>
         {
-            // Header válido pero length = 100 MiB (> MaxResponseBytes = 64 MiB).
+            // Header válido pero length = 100 MiB (>> MaxResponseBytes = 1 MiB).
             var resp = DeviceProtocol.Ack();
             BitConverter.GetBytes(100 * 1024 * 1024).CopyTo(resp, 7);
             await stream.WriteAsync(resp);
@@ -62,6 +62,26 @@ public class TcpDeviceChannelHilTests
         {
             var resp = DeviceProtocol.Ack();
             resp[4] = 99; // version futura
+            await stream.WriteAsync(resp);
+        });
+
+        using (channel)
+        {
+            await Assert.ThrowsAsync<ProtocolException>(async () =>
+                await channel.RequestAsync(DeviceProtocol.Wrap(DeviceProtocol.OpHello, 0, Array.Empty<byte>())));
+        }
+        await server;
+    }
+
+    [Fact]
+    public async Task Zero_version_is_rejected()
+    {
+        // v2.md §8: la versión 0 (ausente/implícita) NO es una versión soportada;
+        // el canal debe rechazarla, no aceptarla por debajo del mínimo.
+        var (channel, server) = await StartServer(async stream =>
+        {
+            var resp = DeviceProtocol.Ack();
+            resp[4] = 0; // version por debajo del mínimo soportado
             await stream.WriteAsync(resp);
         });
 

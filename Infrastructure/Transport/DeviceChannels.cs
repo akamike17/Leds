@@ -19,7 +19,11 @@ namespace DSLetreros.Infrastructure.Transport;
 /// </summary>
 public sealed class TcpDeviceChannel : IDeviceChannel, IDisposable
 {
-    public const int MaxResponseBytes = 64 * 1024 * 1024; // 64 MiB tope de respuesta
+    // Tope de respuesta LEÍDA del dispositivo. Una escena LED compilada (RGB24,
+    // 64x32, frames prerenderizados) ocupa como mucho decenas de KB; 1 MiB es un
+    // margen amplio sin permitir un DoS por asignación de memoria ante un length
+    // corrupto (v2.md §8).
+    public const int MaxResponseBytes = 1024 * 1024; // 1 MiB
 
     private readonly string _host;
     private readonly int _port;
@@ -112,6 +116,8 @@ public sealed class TcpDeviceChannel : IDeviceChannel, IDisposable
         var version = header[4];
         if (version > DeviceProtocol.CurrentProtocolVersion)
             throw new ProtocolException($"Versión de protocolo {version} no soportada.");
+        if (version < DeviceProtocol.MinProtocolVersion)
+            throw new ProtocolException($"Versión de protocolo {version} no soportada (mínima {DeviceProtocol.MinProtocolVersion}).");
         var len = BitConverter.ToInt32(header, 7);
         if (len < 0 || len > MaxResponseBytes)
             throw new ProtocolException("Longitud de trama fuera de rango.");
@@ -153,7 +159,7 @@ public sealed class TcpDeviceChannel : IDeviceChannel, IDisposable
 /// </summary>
 public sealed class SerialDeviceChannel : IDeviceChannel, IDisposable
 {
-    public const int MaxResponseBytes = 64 * 1024 * 1024;
+    public const int MaxResponseBytes = 1024 * 1024; // 1 MiB (mismo criterio que Tcp)
 
     private readonly string _portName;
     private readonly int _baudRate;
@@ -238,6 +244,8 @@ public sealed class SerialDeviceChannel : IDeviceChannel, IDisposable
             var version = header[4];
             if (version > DeviceProtocol.CurrentProtocolVersion)
                 throw new ProtocolException($"Versión de protocolo {version} no soportada.");
+            if (version < DeviceProtocol.MinProtocolVersion)
+                throw new ProtocolException($"Versión de protocolo {version} no soportada (mínima {DeviceProtocol.MinProtocolVersion}).");
             var len = BitConverter.ToInt32(header, 7);
             if (len < 0 || len > MaxResponseBytes)
                 throw new ProtocolException("Longitud de trama fuera de rango.");
