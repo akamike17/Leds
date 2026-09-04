@@ -519,7 +519,7 @@ export class EditorState {
     previewShape(s) {
         const x = Math.min(s.x0, s.x1), y = Math.min(s.y0, s.y1);
         const w = Math.abs(s.x1 - s.x0) + 1, h = Math.abs(s.y1 - s.y0) + 1;
-        const shapeNum = s.kind === 'line' ? 1 : s.kind === 'ellipse' ? 2 : 0;
+        const shapeNum = s.kind === 'rectangle' ? 1 : s.kind === 'ellipse' ? 2 : 0;
         this.renderer.renderShape({
             kind: 'shape', shape: shapeNum,
             position: { x, y }, size: { width: w, height: h },
@@ -537,7 +537,8 @@ export class EditorState {
         const w = Math.abs(s.x1 - s.x0) + 1, h = Math.abs(s.y1 - s.y0) + 1;
         const obj = {
             id: this.newId(), kind: 'shape', name: s.kind,
-            shape: s.kind === 'line' ? 1 : s.kind === 'ellipse' ? 2 : 0,
+            // ShapeKind C#: Line=0, Rectangle=1, Ellipse=2 (contrato de enum).
+            shape: s.kind === 'rectangle' ? 1 : s.kind === 'ellipse' ? 2 : 0,
             position: { x, y }, size: { width: Math.max(w, 1), height: Math.max(h, 1) },
             visible: true, locked: false, brightness: 255,
             timing: { start: 0, end: this.currentScene().duration ?? 5000 }, animations: [],

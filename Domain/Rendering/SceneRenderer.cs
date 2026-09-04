@@ -160,7 +160,11 @@ public static class SceneRenderer
             if (v <= 1.0)
             {
                 bool border = v >= 0.65;
-                fb.SetPixel(x + i, y + j, filled || border ? (border ? stroke : fill) : stroke);
+                // Paridad JS↔C#: el interior sólo se pinta si `filled`; el borde siempre
+                // con stroke. (El ternario anidado previo pintaba stroke en el interior
+                // cuando !filled, rellenando la elipse y divergiendo del editor JS.)
+                if (filled || border)
+                    fb.SetPixel(x + i, y + j, border ? stroke : fill);
             }
         }
     }

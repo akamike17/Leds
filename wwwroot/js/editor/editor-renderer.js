@@ -107,7 +107,8 @@ export class Renderer {
     const w = s.size?.width ?? 0, h = s.size?.height ?? 0;
     const stroke = toCss(s.strokeColor || { r: 255, g: 255, b: 255 }, brightness);
     const fill = toCss(s.fillColor || { r: 0, g: 0, b: 0 }, brightness);
-    if (s.shape === 'rectangle' || s.shape === 0) {
+    // ShapeKind C#: Line=0, Rectangle=1, Ellipse=2.
+    if (s.shape === 'rectangle' || s.shape === 1) {
       for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) {
         if (clipped(clip, i, j)) continue;
         const border = i === 0 || i === w - 1 || j === 0 || j === h - 1;
@@ -128,7 +129,7 @@ export class Renderer {
           if (s.filled || border) ctx.fillRect(x + i, y + j, 1, 1);
         }
       }
-    } else if (s.shape === 'line' || s.shape === 1) {
+    } else if (s.shape === 'line' || s.shape === 0) {
       let x0 = x, y0 = y, x1 = x + w - 1, y1 = y + h - 1;
       const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
       const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;

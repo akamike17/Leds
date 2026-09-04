@@ -57,7 +57,8 @@ public class RendererBoundaryGoldenTests
         Assert.Equal(RgbColor.White, fb.GetPixel(3, 1)); // borde derecho (mata w-1)
     }
 
-    // ---- Elipse: esquinas quedarán negras, centro iluminado ----
+    // ---- Elipse: esquinas quedarán negras; con FillColor=Black (no "filled") el
+    // interior queda negro y sólo el borde (anillo) se pinta con stroke. ----
     [Fact]
     public void Ellipse_corners_black_center_filled()
     {
@@ -72,8 +73,11 @@ public class RendererBoundaryGoldenTests
         Assert.Equal(RgbColor.Black, fb.GetPixel(6, 0));
         Assert.Equal(RgbColor.Black, fb.GetPixel(0, 6));
         Assert.Equal(RgbColor.Black, fb.GetPixel(6, 6));
-        // centro (3,3) dentro
-        Assert.NotEqual(RgbColor.Black, fb.GetPixel(3, 3));
+        // interior (3,3) NO relleno (FillColor=Black): queda negro, sólo el borde pinta
+        Assert.Equal(RgbColor.Black, fb.GetPixel(3, 3));
+        // borde izquierdo/derecho (eje medio) sí está pintado (stroke blanco)
+        Assert.Equal(RgbColor.White, fb.GetPixel(0, 3));
+        Assert.Equal(RgbColor.White, fb.GetPixel(6, 3));
     }
 
     // ---- Dibujo con palette VACÍA → usa blanco (mata d.Palette.Count > 0) ----

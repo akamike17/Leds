@@ -35,13 +35,12 @@ public class FormulaBoundaryTests
             StrokeColor = RgbColor.White, FillColor = RgbColor.Black,
         };
         var fb = SceneRenderer.Render(Scene(el), TimeSpan.Zero, C);
-        // centro (4,2) dentro
-        Assert.NotEqual(RgbColor.Black, fb.GetPixel(4, 2));
-        // extremo horizontal lejano (8,2) fuera (rx=4, nx=(8-4)/4=1.0 → v=1.0 justo borde)
-        // esquinas/en punta: (4,0) arriba-centro: cy=2, ny=(0-2)/2=-1.0 → v=1.0 borde (stroke)
-        // un punto claramente fuera en vertical (4,4): ny=(4-2)/2=1.0 borde...
-        // usamos (0,2) extremo izquierdo: nx=(0-4)/4=-1.0 → borde; (5,2) nx=0.25 v=0.0625 interior
-        Assert.NotEqual(RgbColor.Black, fb.GetPixel(5, 2));
+        // borde horizontal lejano (8,2): nx=(8-4)/4=1.0 → v=1.0 borde (stroke blanco)
+        Assert.Equal(RgbColor.White, fb.GetPixel(8, 2));
+        // borde izquierdo (0,2): nx=-1.0 → v=1.0 borde (stroke)
+        Assert.Equal(RgbColor.White, fb.GetPixel(0, 2));
+        // centro (4,2): interior, FillColor=Black (no filled) → negro (sólo anillo pinta)
+        Assert.Equal(RgbColor.Black, fb.GetPixel(4, 2));
         // fuera en esquina arriba-izquierda (0,0): nx=-1, ny=-1, v=2.0 → negro
         Assert.Equal(RgbColor.Black, fb.GetPixel(0, 0));
     }
