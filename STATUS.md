@@ -41,6 +41,9 @@ Evidencia vía Playwright real + `getImageData` (píxeles observables), no
 - Insertar crea copia independiente; el asset usado queda embebido en el proyecto.
 - 16 iconos incluidos (no sólo Corazón): Corazón, Estrella, Flechas, Teléfono,
   Carrito, Engranaje, Wi-Fi, etc.
+- Transparencia de icono real (spec 14): el fondo del icono NO borra los objetos
+  debajo (señal explícita `TransparentIndex` en el asset; antes un Corazón sobre
+  fondo blanco de 512 px lo dejaba en 465).
 - Imágenes importadas persisten en la biblioteca global (`i-*.json`) y se listan
   en el tab "Imágenes" (insertar/borrar). El flujo importar→listar→insertar→
   persistir está verificado.
@@ -71,7 +74,8 @@ Evidencia vía Playwright real + `getImageData` (píxeles observables), no
 
 ### P1 — Escenas/capas
 - Selector de escena y capa; añadir escena/capa; persistir. La capa activa
-  recibe los objetos nuevos.
+  recibe los objetos nuevos. Visible/Locked respetados: un objeto `visible:false`
+  no renderiza; un objeto/capa `locked` no se borra ni edita.
 
 ### P1 — Autosave/Recovery
 - Autosave conectado a la sesión (`/Projects/Autosave` cada 30 s si hay cambios).
@@ -95,7 +99,7 @@ Evidencia vía Playwright real + `getImageData` (píxeles observables), no
 
 - `dotnet build -c Release`: 0 errores, 0 warnings.
 - Tests .NET: 507/507 pass (estable en 3 corridas).
-- E2E Playwright (30 specs, framebuffer real + coordenadas exactas): 30/30 pass.
+- E2E Playwright (33 specs, framebuffer real + coordenadas exactas): 33/33 pass.
 - Sin errores de consola JS ni HTTP 4xx/5xx inesperados (gate dedicado).
 - Sin botones muertos ni placeholders "se implementará después" en el alcance V1.
 
@@ -116,3 +120,5 @@ Evidencia vía Playwright real + `getImageData` (píxeles observables), no
 - `ce2a74a` fix(contrato píxeles): byte[] base64 ↔ array JS + R1/R2 acceptance.
 - `3cf127c` test(E2E píxeles exactos) + fix(overlay selección separado del framebuffer).
 - `6ec62b8` feat(P0 biblioteca): imágenes importadas listables e insertables.
+- `a458acf` fix(iconos): transparencia real — el fondo del icono no borra objetos debajo.
+- `f93d5a1` fix(P1): locked/visible respetados + E2E de múltiples iconos.
