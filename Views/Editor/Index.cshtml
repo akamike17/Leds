@@ -11,6 +11,9 @@
         <button class="btn btn-sm btn-outline-light" id="btn-open" title="Abrir">📂 Abrir</button>
         <span class="ms-2 small text-muted" id="project-name">Sin título</span>
         <button class="btn btn-sm btn-outline-light ms-3 d-none" id="btn-save-library" title="Guardar selección en Mi biblioteca">📚 Guardar en biblioteca</button>
+        <button class="btn btn-sm btn-outline-light ms-1" id="btn-library" title="Abrir biblioteca">📚 Biblioteca</button>
+        <button class="btn btn-sm btn-outline-light ms-1" id="btn-image" title="Importar imagen">🖼 Imagen</button>
+        <input type="file" id="image-file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none">
 
         <!-- Target (dispositivo de envío) + envío -->
         <span class="ms-auto d-flex align-items-center gap-2">
@@ -66,9 +69,29 @@
         <span class="small text-muted" id="net-label">Conectado</span>
     </span>
     <span class="small text-muted" id="stat-send">Sin envío</span>
+    <span class="small ms-auto" id="stat-notify" role="status"></span>
 </div>
 
 <input type="hidden" id="project-id" value="@projectId" />
+
+<!-- Modal de biblioteca (dibujos propios + iconos incluidos) -->
+<div class="modal fade" id="library-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content bg-dark text-light">
+      <div class="modal-header">
+        <h5 class="modal-title">Biblioteca</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <ul class="nav nav-tabs mb-3" id="library-tabs" role="tablist">
+          <li class="nav-item"><button class="nav-link active" data-lib-tab="drawings" type="button">Mis dibujos</button></li>
+          <li class="nav-item"><button class="nav-link" data-lib-tab="icons" type="button">Iconos</button></li>
+        </ul>
+        <div class="row g-2" id="library-grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 @section Styles {
     <link rel="stylesheet" href="~/css/editor.css" asp-append-version="true" />

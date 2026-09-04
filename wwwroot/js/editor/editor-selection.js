@@ -26,6 +26,24 @@ export class Selection {
         if (ev.target === ev.currentTarget) this.selected.clear();
     }
 
+    // Selección rectangular: selecciona todo objeto cuyo bounding box intersecte
+    // el rectángulo {x0,y0,x1,y1} (coordenadas lógicas, ya normalizadas).
+    selectRect(rect) {
+        this.selected.clear();
+        for (const scene of this.state.project.scenes || [])
+            for (const layer of scene.layers || [])
+                if (!layer.locked)
+                    for (const obj of layer.objects || []) {
+                        if (obj.locked) continue;
+                        const x = obj.position?.x ?? 0, y = obj.position?.y ?? 0;
+                        const w = (obj.size?.width ?? this.guessSize(obj).w) || 1;
+                        const h = (obj.size?.height ?? this.guessSize(obj).h) || 1;
+                        const overlapX = x < rect.x1 && x + w > rect.x0;
+                        const overlapY = y < rect.y1 && y + h > rect.y0;
+                        if (overlapX && overlapY) this.selected.add(obj.id);
+                    }
+    }
+
     list() {
         const result = [];
         for (const scene of this.state.project.scenes || [])

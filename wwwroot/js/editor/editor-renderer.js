@@ -44,6 +44,14 @@ export class Renderer {
     }
   }
 
+  // Devuelve true si el píxel lógico (x,y) está "encendido" (no negro) en el canvas.
+  // Se usa para flood-fill y borrado semántico sin mantener un framebuffer paralelo.
+  pixelAt(x, y) {
+    if (x < 0 || y < 0 || x >= this.canvas.width || y >= this.canvas.height) return false;
+    const d = this.ctx.getImageData(x, y, 1, 1).data;
+    return d[0] > 0 || d[1] > 0 || d[2] > 0;
+  }
+
   renderObject(obj, state) {
     switch (obj.kind) {
       case 'text': this.renderText(obj, state.offsetX, state.offsetY, state.brightness); break;

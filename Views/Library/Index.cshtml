@@ -1,53 +1,125 @@
 @{ ViewData["Title"] = "Biblioteca"; }
 <div class="p-3">
     <h1 class="h4">Mi biblioteca</h1>
-    <p class="text-muted">Dibujos e iconos personalizados guardados.</p>
-    <div id="library-drawings" class="row g-3">
+    <p class="text-muted">Dibujos propios, iconos incluidos e imágenes importadas. Usa la herramienta
+    <span class="text-light">📚 Biblioteca</span> del editor para insertarlos en un proyecto.</p>
+
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item"><button class="nav-link active" data-lib-tab="drawings" type="button">Mis dibujos</button></li>
+        <li class="nav-item"><button class="nav-link" data-lib-tab="icons" type="button">Iconos</button></li>
+    </ul>
+
+    <div id="library-status" class="mb-2"></div>
+    <div id="library-grid" class="row g-3">
         <div class="col-12 text-muted">Cargando...</div>
     </div>
 </div>
 
 @section Scripts {
     <script type="module">
-        async function load() {
+        const token = window.__antiforgery?.token || '';
+
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s == null ? '' : String(s);
+            return d.innerHTML;
+        }
+        function hx(n) { return Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0'); }
+        function b64bytes(b64) {
+            if (typeof b64 !== 'string') return [];
+            const bin = atob(b64);
+            const out = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+            return Array.from(out);
+        }
+        function draw(canvas, w, h, pixels, palette) {
+            const ctx = canvas.getContext('2d');
+            for (let y = 0; y < h; y++)
+                for (let x = 0; x < w; x++) {
+                    const idx = y * w + x;
+                    if (idx >= pixels.length) continue;
+                    const pi = pixels[idx];
+                    if (pi < 0 || pi >= palette.length) continue;
+                    const c = palette[pi];
+                    ctx.fillStyle = c ? `#${hx(c.r)}${hx(c.g)}${hx(c.b)}` : '#fff';
+                    ctx.fillRect(x, y, 1, 1);
+                }
+        }
+        function status(ok, msg) {
+            const el = document.getElementById('library-status');
+            el.className = ok ? 'mb-2 text-success' : 'mb-2 text-danger';
+            el.textContent = msg;
+        }
+
+        async function loadDrawings() {
             const res = await fetch('/Library/Drawings');
             const data = await res.json();
-            const host = document.getElementById('library-drawings');
-            host.innerHTML = '';
+            const grid = document.getElementById('library-grid');
+            grid.innerHTML = '';
             if (!data.drawings || data.drawings.length === 0) {
-                host.innerHTML = '<div class="col-12 text-muted">No hay dibujos guardados todavía.</div>';
+                grid.innerHTML = '<div class="col-12 text-muted">No hay dibujos guardados todavía.</div>';
                 return;
             }
             for (const d of data.drawings) {
                 const col = document.createElement('div');
                 col.className = 'col-auto';
                 col.innerHTML = `
-                    <div class="card" style="width:120px">
+                    <div class="card" style="width:140px">
                         <div class="card-body p-2 text-center">
-                            <canvas width="${d.width}" height="${d.height}" style="width:80px;height:80px;image-rendering:pixelated;background:#000"></canvas>
-                            <div class="small mt-1 text-truncate">${d.name || 'Sin título'}</div>
-                            <button class="btn btn-sm btn-outline-danger mt-1" data-id="${d.id}">Borrar</button>
+                            <canvas width="${d.width}" height="${d.height}" style="width:96px;height:96px;image-rendering:pixelated;background:#000"></canvas>
+                            <div class="small mt-1 text-truncate" title="${esc(d.name)}">${esc(d.name)}</div>
+                            <button class="btn btn-sm btn-outline-danger mt-1" type="button">Borrar</button>
                         </div>
                     </div>`;
-                host.appendChild(col);
-                draw(col.querySelector('canvas'), d);
+                grid.appendChild(col);
+                draw(col.querySelector('canvas'), d.width, d.height, b64bytes(d.pixels), d.palette || []);
                 col.querySelector('button').addEventListener('click', async () => {
-                    await fetch('/Library/DeleteDrawing', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    const res = await fetch('/Library/DeleteDrawing', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                         body: JSON.stringify({ id: d.id }),
                     });
-                    load();
+                    let data;
+                    try { data = await res.json(); } catch { data = null; }
+                    if (!res.ok || !data || !data.success) {
+                        status(false, 'Error al borrar: ' + ((data && data.message) || res.status));
+                        return;
+                    }
+                    status(true, `Eliminado "${d.name}".`);
+                    loadDrawings();
                 });
             }
         }
-        function draw(canvas, d) {
-            const ctx = canvas.getContext('2d');
-            const pal = d.palette && d.palette[0];
-            ctx.fillStyle = pal ? `#${pal.r.toString(16).padStart(2,'0')}${pal.g.toString(16).padStart(2,'0')}${pal.b.toString(16).padStart(2,'0')}` : '#fff';
-            for (let y = 0; y < d.height; y++)
-                for (let x = 0; x < d.width; x++)
-                    if (d.pixels[y * d.width + x]) ctx.fillRect(x, y, 1, 1);
+
+        async function loadIcons() {
+            const res = await fetch('/Library/Icons');
+            const data = await res.json();
+            const grid = document.getElementById('library-grid');
+            grid.innerHTML = '';
+            for (const it of data.icons || []) {
+                const col = document.createElement('div');
+                col.className = 'col-auto';
+                col.innerHTML = `
+                    <div class="card" style="width:140px">
+                        <div class="card-body p-2 text-center">
+                            <canvas width="${it.width}" height="${it.height}" style="width:96px;height:96px;image-rendering:pixelated;background:#000"></canvas>
+                            <div class="small mt-1 text-truncate" title="${esc(it.name)}">${esc(it.name)}</div>
+                            <div class="small text-muted">${esc(it.category || '')}</div>
+                        </div>
+                    </div>`;
+                grid.appendChild(col);
+                draw(col.querySelector('canvas'), it.width, it.height, b64bytes(it.pixels), it.palette || []);
+            }
         }
-        load();
+
+        document.querySelectorAll('[data-lib-tab]').forEach(b => {
+            b.addEventListener('click', () => {
+                document.querySelectorAll('[data-lib-tab]').forEach(x => x.classList.toggle('active', x === b));
+                if (b.dataset.libTab === 'icons') loadIcons();
+                else loadDrawings();
+            });
+        });
+
+        loadDrawings();
     </script>
 }

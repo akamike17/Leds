@@ -95,6 +95,19 @@ export class StatusHud {
         if (el) el.textContent = message;
     }
 
+    // Notificación consolidada (success/warning/error) en un único mecanismo UI.
+    notify(kind, message) {
+        const el = document.getElementById('stat-notify');
+        if (!el) return;
+        el.textContent = message;
+        el.className = 'small ' + (
+            kind === 'error' ? 'text-danger' :
+            kind === 'warning' ? 'text-warning' : 'text-success');
+        // auto-ocultar tras unos segundos (sin borrar dirty/selection/send).
+        if (this._notifyTimer) clearTimeout(this._notifyTimer);
+        this._notifyTimer = setTimeout(() => { el.textContent = ''; }, 4000);
+    }
+
     async send() {
         const projectId = document.getElementById('project-id')?.value;
         const targetId = this.activeTarget ? (this.activeTarget.serial || this.activeTarget.id) : null;

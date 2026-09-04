@@ -122,13 +122,110 @@ export class EditorState {
                 this.addTextObject(scene, text, logical);
                 this.render();
             }
-        } else if (this.tools.activeTool === 'pencil' || this.tools.activeTool === 'eraser') {
+        } else if (this.tools.activeTool === 'pencil') {
             this.history.captureOnce(this.project);
-            this.startDrawingSession(logical, this.tools.activeTool);
+            this.startDrawingSession(logical, 'pencil');
+        } else if (this.tools.activeTool === 'eraser') {
+            // El borrador (spec 15) elimina píxeles de forma semántica: quita el/los
+            // objeto(s) cuyo bounding box cae en la coordenada. No crea un DrawingObject
+            // negro encima (eso no sobreviviría Save/Open como "borrado").
+            this.history.captureOnce(this.project);
+            this.eraseAt(logical);
+        } else if (this.tools.activeTool === 'fill') {
+            this.history.captureOnce(this.project);
+            this.floodFill(logical);
         } else if (this.tools.activeTool === 'rect' || this.tools.activeTool === 'ellipse' || this.tools.activeTool === 'line') {
             this.history.captureOnce(this.project);
             this.startShapeSession(scene, logical, this.tools.activeTool);
         }
+    }
+
+    // Borrado semántico: elimina de la capa activa todo objeto cuyo bounding box
+    // contenga la coordenada lógica. Un borrado vacío no ensucia (markDirty innecesario).
+    eraseAt(logical) {
+        const scene = this.currentScene();
+        if (!scene) return;
+        let removed = 0;
+        for (const layer of scene.layers || []) {
+            if (layer.locked) continue;
+            const before = (layer.objects || []).length;
+            layer.objects = (layer.objects || []).filter(obj => {
+                if (obj.locked) return true;
+                const x = obj.position?.x ?? 0, y = obj.position?.y ?? 0;
+                const w = (obj.size?.width ?? this.selection.guessSize(obj).w) || 1;
+                const h = (obj.size?.height ?? this.selection.guessSize(obj).h) || 1;
+                const inside = logical.x >= x && logical.x < x + w && logical.y >= y && logical.y < y + h;
+                if (inside) return false;
+                return true;
+            });
+            removed += before - layer.objects.length;
+        }
+        if (removed > 0) {
+            this.selection.deselectAll();
+            this.markDirty();
+            this.render();
+        }
+    }
+
+    // Flood fill (spec 15): rellena la región conexa (4-conectada) del framebuffer
+    // lógico actual que comparte el color del píxel origen, limitada al canvas/drawing.
+    // El resultado se materializa como un DrawingObject (1bpp monocromo) para que
+    // sobreviva Save/Open como un objeto más y no un "parche" efímero.
+    floodFill(logical) {
+        const scene = this.currentScene();
+        if (!scene) return;
+        const w = this.canvas.width, h = this.canvas.height;
+        if (logical.x < 0 || logical.x >= w || logical.y < 0 || logical.y >= h) return;
+
+        // Color del píxel origen en el framebuffer lógico actual.
+        const target = this.framebufferPixel(logical.x, logical.y);
+        // Si el píxel origen ya está "encendido" (pintado) no hay región vacía que rellenar;
+        // rellenar sólo tiene sentido sobre regiones apagadas (transparentes/negras).
+        if (target) return;
+
+        const visited = new Uint8Array(w * h);
+        const stack = [[logical.x, logical.y]];
+        let minX = logical.x, maxX = logical.x, minY = logical.y, maxY = logical.y;
+
+        while (stack.length > 0) {
+            const [x, y] = stack.pop();
+            const idx = y * w + x;
+            if (x < 0 || x >= w || y < 0 || y >= h) continue;
+            if (visited[idx]) continue;
+            visited[idx] = 1;
+            // rellenamos únicamente píxeles apagados (mismo "color" que el origen).
+            if (this.framebufferPixel(x, y)) continue;
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+            stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+        }
+
+        const fw = maxX - minX + 1, fh = maxY - minY + 1;
+        const data = new Uint8Array(fw * fh);
+        for (let y = minY; y <= maxY; y++)
+            for (let x = minX; x <= maxX; x++)
+                if (visited[y * w + x] && !this.framebufferPixel(x, y))
+                    data[(y - minY) * fw + (x - minX)] = 1;
+
+        const obj = {
+            id: this.newId(), kind: 'drawing', name: 'Relleno',
+            position: { x: minX, y: minY }, size: { width: fw, height: fh },
+            visible: true, locked: false, brightness: 255,
+            timing: { start: 0, end: scene.duration ?? 5000 }, animations: [],
+            bitsPerPixel: 1, palette: [{ r: 255, g: 255, b: 255 }],
+            pixelData: Array.from(data),
+            bounds: { origin: { x: 0, y: 0 }, size: { width: fw, height: fh } },
+        };
+        this.layer().objects.push(obj);
+        this.markDirty();
+        this.render();
+    }
+
+    // Lee un píxel del framebuffer lógico actual (composición de la escena al tiempo 0).
+    // Devuelve true si el píxel está encendido (no negro).
+    framebufferPixel(x, y) {
+        if (!this.renderer) return false;
+        return this.renderer.pixelAt(x, y);
     }
 
     onPointerMove(e) {
@@ -166,7 +263,8 @@ export class EditorState {
             return;
         }
         if (this.tools.rectSelect) {
-            this.tools.endRectSelect();
+            const r = this.tools.endRectSelect();
+            this.selectRect(r);
             this.render();
             return;
         }
@@ -197,14 +295,33 @@ export class EditorState {
 
     // ----- operaciones de objetos -----
     addTextObject(scene, text, pos) {
+        const textWidth = Math.max(1, text.length * 6 - 1);   // 5x7 con spacing 1 → 6px/char
+        const canvasW = this.canvas.width;
+
+        // Spec 13: nunca clipping silencioso. Si el texto no cabe en el ancho del
+        // canvas, se activa el modo marquee (una animación Marquee automática) y se
+        // ancla el texto dentro del lienzo para que sea VISIBLE (no recortado).
+        const overflow = textWidth > canvasW;
+        const x = overflow ? 0 : Math.min(pos.x, Math.max(0, canvasW - textWidth));
+
         const obj = {
             id: this.newId(), kind: 'text', name: text.slice(0, 8), text,
-            position: { x: pos.x, y: pos.y }, size: { width: text.length * 6 - 1, height: 7 },
+            position: { x, y: pos.y }, size: { width: textWidth, height: 7 },
             visible: true, locked: false, brightness: 255,
             timing: { start: 0, end: scene.duration ?? 5000 }, animations: [],
             fontId: '5x7', color: { r: 255, g: 255, b: 255 },
-            horizontalAlignment: 0, verticalAlignment: 0, layoutMode: 0,
+            horizontalAlignment: 0, verticalAlignment: 0,
+            layoutMode: overflow ? 2 : 0,
         };
+        if (overflow) {
+            // Animación Marquee: el renderer desplaza el texto dentro del viewport en
+            // lugar de recortarlo; la Y se ancla dentro del lienzo para que sea visible.
+            obj.position.y = Math.min(pos.y, Math.max(0, this.canvas.height - 7));
+            obj.animations = [{
+                kind: 'marquee', speedPreset: 'normal', direction: 'left',
+                loop: true, slot: 1,
+            }];
+        }
         this.layer().objects.push(obj);
         this.markDirty();
         return obj;
@@ -282,19 +399,28 @@ export class EditorState {
         this.previewShape(s);
     }
 
+    // Preview de forma: dibuja la forma REAL (línea/rectángulo/elipse) con la misma
+    // geometría que el renderer, en lugar de un strokeRect genérico. El preview es
+    // efímero (se re-renderiza al arrastrar) y no toca el árbol de objetos.
     previewShape(s) {
-        const ctx = this.ctx;
-        ctx.fillStyle = '#fff';
-        const x = s.x0, y = s.y0, w = s.x1 - s.x0, h = s.y1 - s.y0;
-        ctx.strokeStyle = '#fff';
-        ctx.strokeRect(x, y, w, h);
+        const x = Math.min(s.x0, s.x1), y = Math.min(s.y0, s.y1);
+        const w = Math.abs(s.x1 - s.x0) + 1, h = Math.abs(s.y1 - s.y0) + 1;
+        const shapeNum = s.kind === 'line' ? 1 : s.kind === 'ellipse' ? 2 : 0;
+        this.renderer.renderShape({
+            kind: 'shape', shape: shapeNum,
+            position: { x, y }, size: { width: w, height: h },
+            strokeColor: { r: 255, g: 255, b: 255 },
+            fillColor: { r: 0, g: 0, b: 0 },
+        }, 0, 0, 1, null);
     }
 
     endShapeSession() {
         const s = this.shapeSession;
         if (!s) return;
         const x = Math.min(s.x0, s.x1), y = Math.min(s.y0, s.y1);
-        const w = Math.abs(s.x1 - s.x0), h = Math.abs(s.y1 - s.y0);
+        // +1 para que la dimensión coincida con el renderer (itera i < w, i < h),
+        // de modo que un rect desde (5,6) a (10,9) mida exactamente 6x4.
+        const w = Math.abs(s.x1 - s.x0) + 1, h = Math.abs(s.y1 - s.y0) + 1;
         const obj = {
             id: this.newId(), kind: 'shape', name: s.kind,
             shape: s.kind === 'line' ? 1 : s.kind === 'ellipse' ? 2 : 0,
@@ -344,8 +470,6 @@ export class EditorState {
 
     markDirty() {
         this.dirty = true;
-        const bar = document.getElementById('status-bar');
-        if (bar) bar.textContent = 'Cambios sin guardar';
         if (this.hud) this.hud.setDirty(true);
     }
 
@@ -359,8 +483,18 @@ export class EditorState {
             });
         });
         document.getElementById('btn-save').addEventListener('click', () => this.save());
+        document.getElementById('btn-open').addEventListener('click', () => this.openProject());
         document.getElementById('btn-play').addEventListener('click', () => this.togglePlay());
         document.getElementById('btn-save-library').addEventListener('click', () => this.saveToLibrary());
+        document.getElementById('btn-library').addEventListener('click', () => this.openLibrary());
+        document.getElementById('btn-image').addEventListener('click', () => document.getElementById('image-file').click());
+        document.getElementById('image-file').addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) this.importImage(e.target.files[0]);
+            e.target.value = '';
+        });
+        document.querySelectorAll('[data-lib-tab]').forEach(b => {
+            b.addEventListener('click', () => this.loadLibraryTab(b.dataset.libTab));
+        });
         document.getElementById('scene-select').addEventListener('change', () => {
             this.updateSceneTimeLabel();
             this.render();
@@ -398,6 +532,11 @@ export class EditorState {
         for (const scene of this.project.scenes || [])
             for (const layer of scene.layers || [])
                 layer.objects = (layer.objects || []).filter(o => !ids.has(o.id));
+    }
+
+    // Selección rectangular: delega en el Selection.
+    selectRect(rect) {
+        this.selection.selectRect(rect);
     }
 
     duplicateSelected() {
@@ -452,10 +591,250 @@ export class EditorState {
             }),
         });
         const data = await res.json();
-        const bar = document.getElementById('status-bar');
-        if (bar) bar.textContent = data.success
+        this.notify(data.success, data.success
             ? `Guardado en Mi biblioteca (${data.id})`
-            : ('Error: ' + data.message);
+            : ('Error: ' + data.message));
+    }
+
+    // Abrir proyecto desde la toolbar: navega al listado de proyectos. Si hay
+    // cambios sin guardar, el beforeunload del HUD ya protege el trabajo.
+    openProject() {
+        window.location.href = '/Projects';
+    }
+
+    // Notificación consolidada (success/warning/error) vía el HUD.
+    notify(success, message) {
+        if (this.hud) this.hud.notify(success ? 'success' : 'error', message);
+    }
+
+    // ----- biblioteca (modal en el editor) -----
+    openLibrary() {
+        const modal = document.getElementById('library-modal');
+        if (modal && window.bootstrap) {
+            bootstrap.Modal.getOrCreateInstance(modal).show();
+        }
+        this.loadLibraryTab('drawings');
+    }
+
+    loadLibraryTab(tab) {
+        // marca la pestaña activa
+        document.querySelectorAll('[data-lib-tab]').forEach(b =>
+            b.classList.toggle('active', b.dataset.libTab === tab));
+        const grid = document.getElementById('library-grid');
+        grid.innerHTML = '<div class="col-12 text-muted">Cargando…</div>';
+        if (tab === 'icons') this.loadIcons(grid);
+        else this.loadDrawings(grid);
+    }
+
+    async loadDrawings(grid) {
+        const res = await fetch('/Library/Drawings');
+        const data = await res.json();
+        grid.innerHTML = '';
+        const items = data.drawings || [];
+        if (items.length === 0) {
+            grid.innerHTML = '<div class="col-12 text-muted">No hay dibujos guardados.</div>';
+            return;
+        }
+        for (const d of items) {
+            grid.appendChild(this.libraryCard(d, 'drawing'));
+        }
+    }
+
+    async loadIcons(grid) {
+        const res = await fetch('/Library/Icons');
+        const data = await res.json();
+        grid.innerHTML = '';
+        const items = data.icons || [];
+        for (const it of items) {
+            grid.appendChild(this.libraryCard(it, 'icon'));
+        }
+    }
+
+    // Tarjeta de asset con preview canvas + botón Insertar.
+    libraryCard(asset, kind) {
+        const col = document.createElement('div');
+        col.className = 'col-auto';
+        const w = asset.width, h = asset.height;
+        col.innerHTML = `
+            <div class="card bg-secondary text-light" style="width:110px">
+                <div class="card-body p-2 text-center">
+                    <canvas width="${w}" height="${h}" style="width:64px;height:64px;image-rendering:pixelated;background:#000"></canvas>
+                    <div class="small mt-1 text-truncate" title="${this.esc(asset.name || '')}">${this.esc(asset.name || '')}</div>
+                    ${kind === 'icon' ? `<div class="small text-muted">${this.esc(asset.category || '')}</div>` : ''}
+                    <button class="btn btn-sm btn-outline-light mt-1 w-100" type="button">Insertar</button>
+                </div>
+            </div>`;
+        // preview
+        const cv = col.querySelector('canvas');
+        this.drawAssetPreview(cv, asset);
+        // insertar
+        col.querySelector('button').addEventListener('click', () => {
+            if (kind === 'icon') this.insertIconAsset(asset);
+            else this.insertDrawingAsset(asset);
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('library-modal')).hide();
+        });
+        return col;
+    }
+
+    esc(s) {
+        const d = document.createElement('div');
+        d.textContent = s == null ? '' : String(s);
+        return d.innerHTML;
+    }
+
+    drawAssetPreview(canvas, asset) {
+        const ctx = canvas.getContext('2d');
+        const w = asset.width, h = asset.height;
+        const pixels = this.decodeBase64Bytes(asset.pixels);
+        const palette = asset.palette || [];
+        for (let y = 0; y < h; y++)
+            for (let x = 0; x < w; x++) {
+                const idx = y * w + x;
+                if (idx >= pixels.length) continue;
+                const pi = pixels[idx];
+                if (pi < 0 || pi >= palette.length) continue;
+                const c = palette[pi];
+                ctx.fillStyle = c ? `#${this.hx(c.r)}${this.hx(c.g)}${this.hx(c.b)}` : '#fff';
+                ctx.fillRect(x, y, 1, 1);
+            }
+    }
+
+    hx(n) { return Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0'); }
+
+    decodeBase64Bytes(b64) {
+        if (typeof b64 !== 'string') return [];
+        const bin = atob(b64);
+        const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return Array.from(out);
+    }
+
+    // Inserta un IconObject: copia independiente + asset embebido en el proyecto.
+    insertIconAsset(asset) {
+        const scene = this.currentScene();
+        if (!scene) return;
+        this.history.captureOnce(this.project);
+        const assetId = asset.id;
+        this.project.embeddedAssets = this.project.embeddedAssets || {};
+        this.project.embeddedAssets[assetId] = JSON.stringify({
+            width: asset.width, height: asset.height,
+            pixels: asset.pixels,
+            palette: (asset.palette || []).map(c => ({ r: c.r, g: c.g, b: c.b })),
+        });
+        const obj = {
+            id: this.newId(), kind: 'icon', name: asset.name || 'Icono',
+            position: { x: 0, y: 0 }, size: { width: asset.width, height: asset.height },
+            visible: true, locked: false, brightness: 255,
+            timing: { start: 0, end: scene.duration ?? 5000 }, animations: [],
+            assetId, paletteMode: 0, tint: { r: 255, g: 255, b: 255 },
+        };
+        this.layer().objects.push(obj);
+        this.history.commitPending();
+        this.markDirty();
+        this.render();
+        this.notify(true, `Icono "${asset.name}" insertado`);
+    }
+
+    // Inserta un dibujo de la biblioteca como DrawingObject (copia independiente).
+    insertDrawingAsset(asset) {
+        const scene = this.currentScene();
+        if (!scene) return;
+        this.history.captureOnce(this.project);
+        const pixels = this.decodeBase64Bytes(asset.pixels);
+        const obj = {
+            id: this.newId(), kind: 'drawing', name: asset.name || 'Dibujo',
+            position: { x: 0, y: 0 }, size: { width: asset.width, height: asset.height },
+            visible: true, locked: false, brightness: 255,
+            timing: { start: 0, end: scene.duration ?? 5000 }, animations: [],
+            bitsPerPixel: 1, palette: (asset.palette || [{ r: 255, g: 255, b: 255 }]).map(c => ({ r: c.r, g: c.g, b: c.b })),
+            pixelData: pixels,
+            bounds: { origin: { x: 0, y: 0 }, size: { width: asset.width, height: asset.height } },
+        };
+        this.layer().objects.push(obj);
+        this.history.commitPending();
+        this.markDirty();
+        this.render();
+        this.notify(true, `Dibujo "${asset.name}" insertado`);
+    }
+
+    // Importa una imagen (spec 15): decode → preview → rasteriza (nearest-neighbor +
+    // quantize + dither) vía /Library/RasterizeImage → inserta ImageObject con el asset
+    // EMBEBIDO en el proyecto (nunca una ruta externa).
+    async importImage(file) {
+        try {
+            const bmp = await this.decodeImageFile(file);
+            if (!bmp) { this.notify(false, 'No se pudo decodificar la imagen.'); return; }
+
+            // Target = tamaño del canvas lógico (la imagen se escala al lienzo; si excede,
+            // se escala proporcionalmente para no exceder 256 px por lado).
+            const cw = this.canvas.width, ch = this.canvas.height;
+            let tw = cw, th = ch;
+
+            const rgba = new Array(bmp.width * bmp.height * 4);
+            for (let i = 0; i < bmp.data.length; i++) rgba[i] = bmp.data[i];
+
+            const res = await fetch('/Library/RasterizeImage', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': window.__antiforgery?.token || '',
+                },
+                body: JSON.stringify({
+                    name: file.name || 'Imagen',
+                    format: file.type || 'png',
+                    srcWidth: bmp.width, srcHeight: bmp.height,
+                    targetWidth: tw, targetHeight: th,
+                    rgba,
+                    dither: true, maxColors: 16,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                this.notify(false, 'Error al rasterizar: ' + (data.message || res.status));
+                return;
+            }
+
+            // Embebe el asset en el proyecto y crea un ImageObject con copia independiente.
+            const scene = this.currentScene();
+            if (!scene) return;
+            this.history.captureOnce(this.project);
+            this.project.embeddedAssets = this.project.embeddedAssets || {};
+            this.project.embeddedAssets[data.assetId] = data.assetJson;
+            const parsed = JSON.parse(data.assetJson);
+            const obj = {
+                id: this.newId(), kind: 'image', name: file.name || 'Imagen',
+                position: { x: 0, y: 0 }, size: { width: parsed.width, height: parsed.height },
+                visible: true, locked: false, brightness: 255,
+                timing: { start: 0, end: scene.duration ?? 5000 }, animations: [],
+                assetId: data.assetId, conversionMetadata: parsed.conversionMetadata || '',
+            };
+            this.layer().objects.push(obj);
+            this.history.commitPending();
+            this.markDirty();
+            this.render();
+            this.notify(true, `Imagen "${file.name}" insertada`);
+        } catch (err) {
+            this.notify(false, 'Error importando imagen: ' + (err?.message || err));
+        }
+    }
+
+    decodeImageFile(file) {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+                const c = document.createElement('canvas');
+                c.width = img.naturalWidth || img.width;
+                c.height = img.naturalHeight || img.height;
+                const ctx = c.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(url);
+                try { resolve(ctx.getImageData(0, 0, c.width, c.height)); }
+                catch (e) { reject(e); }
+            };
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode')); };
+            img.src = url;
+        });
     }
 
     updateSceneTimeLabel() {
@@ -475,11 +854,12 @@ export class EditorState {
             body: JSON.stringify(this.project),
         });
         const data = await res.json();
-        const bar = document.getElementById('status-bar');
-        if (bar) bar.textContent = data.success ? 'Guardado' : ('Error: ' + (data.message || 'desconocido'));
         if (data.success) {
             this.dirty = false;
             if (this.hud) this.hud.setDirty(false);
+            this.notify(true, 'Guardado');
+        } else {
+            this.notify(false, 'Error: ' + (data.message || 'desconocido'));
         }
     }
 
