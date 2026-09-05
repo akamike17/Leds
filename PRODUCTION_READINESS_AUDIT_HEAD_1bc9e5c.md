@@ -87,15 +87,36 @@ Entorno: Windows 10, .NET 8 (dotnet 3.11), Node/Playwright 1.62.1
 - E2E: 54 superados, 0 fallidos
 - Archivos de código/test modificados: 13
 
-## VEREDICTO
+## CI REMOTO (run 33980844742 — push de a784532)
 
-**YELLOW — usable, pendiente de los gates que requieren CI remoto.**
+| Gate | Resultado |
+|------|-----------|
+| Build (warnings-as-errors) | ✓ 24s |
+| .NET tests | ✓ 603/603 (43s) |
+| E2E (Playwright) | ✓ 54/54 (2m11s) |
+| Static analysis (.NET analyzers) | ✓ 33s |
+| Dependency audit (`dotnet list package --vulnerable` + `npm audit`) | ✓ 17s |
+| Coverage (threshold 0.60) | ✓ line-rate **0.8447**, branch-rate **0.7580** |
+| Mutation (Stryker 4.16) | ✓ **58.51%** (consultar 1333 mutantes; killed 963, survived 364, timeout 6; compile-error 204, no-coverage 323, ignorados 2472) |
+| All mandatory gates | ✓ PASS |
 
-Todos los P0/P1 de la sección 2 están corregidos y cubiertos por tests de regresión (unit +
-E2E). La paridad editor↔simulador está probada pixel-exact. Persistencia/recovery crash-safe y
-seguridad de borde local están implementadas y testeadas.
+- Mutation score: **58.51%** (killed 963 / survived 364 / timeout 6; no-coverage 323, compile-error 204).
+- Line/branch coverage: **84.47% / 75.80%**.
+- Dependencias: sin vulnerabilidades críticas.
 
-No se marca GREEN todavía porque final.md exige verificación independiente de los gates que aquí
-no se pueden ejecutar contra CI real (mutation score y line/branch coverage sobre ESTE HEAD, y el
-dependency `dotnet list package --vulnerable`), que deben correrse como jobs del workflow para su
-valor duro. Tampoco se valida hardware físico (fuera del alcance de entorno local).
+## VEREDICTO FINAL
+
+**YELLOW — usable, no production-ready hasta cerrar el gap de mutation.**
+
+Todos los P0/P1 de la sección 2 quedaron corregidos y cubiertos por tests de regresión (unit + E2E),
+con CI 100% verde (7/7 gates obligatorios + agregación). La paridad editor↔simulador está probada
+pixel-exact (R5). Persistencia/recovery crash-safe y seguridad de borde local están implementadas y
+testeadas. Dependencias sin vulnerables.
+
+El único bloqueante para GREEN según los criterios de `final.md` §25 es que la **mutation score real
+es 58.51%**, por debajo del rigor que el usuario exige (~95-99%). La cobertura de línea (84.47%) y
+rama (75.80%) superan el umbral de CI y son sólidas, pero el mutation score honesto es el que es:
+963 mutantes matados, 364 supervivientes (equivalentes/defensivos) y 323 sin cobertura — atribuibles
+en su mayoría a la capa MVC (Controllers/Views/Program) y a mutantes de geometría de píxeles
+equivalentes, no a lógica de dominio rota. Cerrar ese gap es la siguiente afirmación de trabajo, no
+un "justified survivor". El hardware físico queda fuera del alcance de un entorno local.
