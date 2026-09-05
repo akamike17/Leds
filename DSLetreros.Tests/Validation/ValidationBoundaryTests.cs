@@ -357,4 +357,31 @@ public class RollingFileLoggerTests : IDisposable
         Assert.DoesNotContain("abc", line);
         Assert.DoesNotContain("zzz", line);
     }
+
+    // ----- IsEnabled: branch `logLevel != None` -----
+
+    [Theory]
+    [InlineData(LogLevel.Trace)]
+    [InlineData(LogLevel.Debug)]
+    [InlineData(LogLevel.Information)]
+    [InlineData(LogLevel.Warning)]
+    [InlineData(LogLevel.Error)]
+    [InlineData(LogLevel.Critical)]
+    public void IsEnabled_is_true_for_all_levels_except_none(LogLevel level)
+    {
+        Assert.True(_logger.IsEnabled(level));
+    }
+
+    [Fact]
+    public void IsEnabled_is_false_for_none()
+    {
+        Assert.False(_logger.IsEnabled(LogLevel.None));
+    }
+
+    [Fact]
+    public void Log_with_none_level_writes_nothing()
+    {
+        _logger.Log(LogLevel.None, 0, "state", null, (s, e) => "should not appear");
+        Assert.Empty(ReadLines());
+    }
 }

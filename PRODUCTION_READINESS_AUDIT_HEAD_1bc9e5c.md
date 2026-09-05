@@ -97,25 +97,24 @@ Entorno: Windows 10, .NET 8 (dotnet 3.11), Node/Playwright 1.62.1
 | Static analysis (.NET analyzers) | ✓ 33s |
 | Dependency audit (`dotnet list package --vulnerable` + `npm audit`) | ✓ 17s |
 | Coverage (threshold 0.60) | ✓ line-rate **0.8447**, branch-rate **0.7580** |
-| Mutation (Stryker 4.16) | ✓ **62.32%** (killed 1012 / survived 363 / timeout 20; no-coverage 261, compile-error 153) |
+| Mutation (Stryker 4.16) | ✓ **63.53%** (killed 1038 / survived 357 / timeout 14; no-coverage 247, compile-error 153) |
 | All mandatory gates | ✓ PASS |
 
-- Mutation score: **62.32%** (killed 1012 / survived 363 / timeout 20; no-coverage 261, compile-error 153).
+- Mutation score: **63.53%** (killed 1038 / survived 357 / timeout 14; no-coverage 247, compile-error 153).
 - Line/branch coverage: **84.47% / 75.80%**.
 - Dependencias: sin vulnerabilidades críticas.
 
-> Progreso de mutation en una pasada de cierre de gap (todo con tests REALES de comportamiento,
-> ninguno de string frágil):
-> - `ValidatorExactBoundaryTests.cs` (20 tests) — frontera EXACTA de cada límite del validador
->   (`== Max` vs `Max+1`, `End == Duration` vs `+1ms`, índice `== paletteCount-1` vs `== paletteCount`)
->   y branches de error antes NoCoverage (IDs duplicados, grupos inválidos).
-> - `LibraryServiceIoCoverageTests.cs` (10 tests) — I/O real de get/delete/list de dibujos e imágenes,
->   `SaveCustomImage` (null-coalescing + dimensiones inválidas), `PalettesEqual` (distinto count).
-> - Resultado: killed 963 → 1012 (+49), NoCoverage 323 → 261 (−62), score 58.51% → 62.32%.
-> - El residuo restante es estructural, no falta de rigor: 363 survivors son String de mensajes de
->   error, Statement/Logical defensivos y Arithmetic de geometría de píxel equivalentes (matar String
->   exige asserts de texto exacto, rechazados por el criterio del proyecto); 261 NoCoverage son en
->   gran parte `SerialDeviceChannel` (hardware físico, no simulable) y branches de timeout de socket.
+> Cierre de gap de mutation: **58.51% → 63.53%** (killed 963 → 1038, NoCoverage 323 → 247),
+> +75 mutantes matados, +45 tests reales de comportamiento (ninguno de string frágil):
+> - `ValidatorExactBoundaryTests.cs` (20) — frontera EXACTA de cada límite del validador.
+> - `LibraryServiceIoCoverageTests.cs` (10) — I/O de get/delete/list de dibujos e imágenes.
+> - `TcpDeviceChannelRetryAndPayloadTests.cs` (3) — payload no-vacío, conexión rechazada, cierre a mitad de payload.
+> - `DeploymentServiceFailurePhaseTests.cs` (4) — fallo limpio en Validate/Connect/GetCapabilities.
+> - `RollingFileLogger` IsEnabled (8) — gate `logLevel != None`.
+> Residuo estructural restante: 357 survivors (String de mensajes + Statement/Logical/Arithmetic
+> equivalentes) y 247 NoCoverage (en gran parte `SerialDeviceChannel` = hardware físico no simulable
+> + rotación de log por tamaño de 5 MB). Matar String exige asserts de texto exacto (rechazados por
+> el criterio del proyecto); el resto requiere hardware o soak de fuerza bruta.
 
 ## VEREDICTO FINAL
 
