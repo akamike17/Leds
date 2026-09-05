@@ -26,15 +26,25 @@ public sealed class FrameBuffer
             throw new ArgumentOutOfRangeException(nameof(width), "Buffer con dimensiones positivas.");
 
         // checked/long: rechaza desbordamiento de width*height ANTES de allocar.
+        // (1.md §A) `total`/`overflowed` quedan DEFINITIVAMENTE asignados para que
+        // Stryker no genere un mutante inválido (CS0165) y entre en Safe Mode. El
+        // `checked` y el throw por overflow se conservan; sólo se aparta el throw del
+        // catch. Semántica idéntica: int×int→long no desborda en la práctica, pero el
+        // guard permanece como cinturón de seguridad.
         long total;
+        bool overflowed = false;
         try
         {
             total = checked((long)width * (long)height);
         }
         catch (OverflowException)
         {
-            throw new ArgumentOutOfRangeException(nameof(width), "Dimensiones que desbordan el tamaño del buffer.");
+            total = 0;
+            overflowed = true;
         }
+
+        if (overflowed)
+            throw new ArgumentOutOfRangeException(nameof(width), "Dimensiones que desbordan el tamaño del buffer.");
 
         if (total > MaxTotalPixels)
             throw new ArgumentOutOfRangeException(nameof(width),

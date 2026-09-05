@@ -46,16 +46,24 @@ public sealed class EditingService
         EnsureCapacity(scene, 1);
 
         // Tamaño con aritmética checked: rechaza overflow y límites excesivos.
+        // (1.md §A) `pixelCount`/`overflowed` definitivamente asignados (evita CS0165
+        // de Stryker → Safe Mode). `checked` y throw por overflow se conservan.
         int pixelCount;
+        bool overflowed = false;
         try
         {
             pixelCount = checked(size.Width * size.Height);
         }
         catch (OverflowException)
         {
+            pixelCount = 0;
+            overflowed = true;
+        }
+
+        if (overflowed)
             throw new ArgumentOutOfRangeException(nameof(size),
                 $"El tamaño {size.Width}x{size.Height} del dibujo desborda el cálculo de píxeles.");
-        }
+
         if (pixelCount > MaxDrawingPixels)
             throw new ArgumentOutOfRangeException(nameof(size),
                 $"El dibujo de {pixelCount} píxeles supera el máximo de {MaxDrawingPixels}.");
@@ -213,15 +221,20 @@ public sealed class EditingService
 
         int existing = (int)scene.ObjectCount();
         int total;
+        bool overflowed = false;
         try
         {
             total = checked(existing + incoming);
         }
         catch (OverflowException)
         {
+            total = 0;
+            overflowed = true;
+        }
+
+        if (overflowed)
             throw new InvalidOperationException(
                 $"El número de objetos de la escena desborda el máximo de {MaxObjectsPerScene}.");
-        }
 
         if (total > MaxObjectsPerScene)
             throw new InvalidOperationException(
