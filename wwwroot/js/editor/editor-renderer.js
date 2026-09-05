@@ -75,6 +75,20 @@ export class Renderer {
     let curX = x;
     for (const ch of t.text) {
       const g = font.get(ch);
+      if (!g && font !== Font5x7 && Font5x7.has(ch)) {
+        // FALLBACK (final.md §2.A/B): sin glifo en la fuente activa (3x5 omite
+        // M/W/minúsculas/acentos) → se renderiza el glifo 5x7 equivalente para no
+        // perder el carácter en silencio, avanzando el ancho real 5x7 (5+1). Paridad C#↔JS.
+        const fg = Font5x7.get(ch);
+        for (let row = 0; row < Font5x7.height; row++) {
+          const bits = fg[row];
+          for (let col = 0; col < Font5x7.width; col++) {
+            if (bits & (1 << col)) ctx.fillRect(curX + col, y + row, 1, 1);
+          }
+        }
+        curX += Font5x7.width + Font5x7.spacing;
+        continue;
+      }
       if (!g) { curX += advance; continue; }
       ctx.fillStyle = color;
       for (let row = 0; row < font.height; row++) {

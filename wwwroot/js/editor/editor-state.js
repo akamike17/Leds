@@ -49,7 +49,7 @@ export class EditorState {
             if (!this.dirty) return;
             const projectId = document.getElementById('project-id')?.value;
             try {
-                await fetch('/Projects/Autosave', {
+                const res = await fetch('/Projects/Autosave', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -57,7 +57,20 @@ export class EditorState {
                     },
                     body: JSON.stringify(this.projectForWire()),
                 });
-                if (this.hud) this.hud.setSend('Autoguardado');
+                // "Autoguardado" SOLO si el servidor confirma success:true. Un HTTP 2xx
+                // con success:false, un 4xx/5xx o un body no-JSON son un FALLO: se
+                // conserva el estado dirty, se muestra aviso no destructivo y se
+                // reintenta en el próximo tick (spec 2.D).
+                let ok = false;
+                try {
+                    const data = await res.json();
+                    ok = data && data.success === true;
+                } catch { ok = false; }   // body malformado / no-JSON → fallo
+                if (ok) {
+                    if (this.hud) this.hud.setSend('Autoguardado');
+                } else {
+                    if (this.hud) this.hud.notify('warning', 'Autoguardado falló; se reintentará.');
+                }
             } catch { /* offline: el autosave retoma en el próximo tick */ }
         }, 30_000);
     }
@@ -662,9 +675,15 @@ export class EditorState {
         });
         document.getElementById('btn-save').addEventListener('click', () => this.save());
         // Nuevo proyecto (spec 12): modal de matriz → POST /Editor/New → recarga editor.
+        // Con cambios sin guardar, primero se ofrece Guardar/Descartar/Cancelar; sólo
+        // con Guardar exitoso o Descartar se abre el modal de Nueva matriz.
         document.getElementById('btn-new').addEventListener('click', () => {
-            const m = document.getElementById('new-modal');
-            if (m && window.bootstrap) bootstrap.Modal.getOrCreateInstance(m).show();
+            const openNewModal = () => {
+                const m = document.getElementById('new-modal');
+                if (m && window.bootstrap) bootstrap.Modal.getOrCreateInstance(m).show();
+            };
+            if (this.dirty && this.hud) this.hud.confirmNavigation(openNewModal);
+            else openNewModal();
         });
         const newMatrix = document.getElementById('new-matrix');
         if (newMatrix) {

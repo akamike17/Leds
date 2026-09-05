@@ -38,17 +38,19 @@ test('R2 CorazonR2: guardar dos veces NO duplica; thumbnail es el corazón', asy
     await page.waitForTimeout(300);
   }
 
-  // Abrir biblioteca -> tab dibujos -> debe haber EXACTAMENTE UNA entrada.
+  // Abrir biblioteca -> tab dibujos -> debe haber EXACTAMENTE UNA entrada de CorazonR2.
+  // (final.md §2.G: NO asumir que la biblioteca sólo contiene CorazonR2 — otros dibujos
+  //  válidos pueden coexistir en storage compartido. Se filtra por identidad exacta.)
   await page.locator('#btn-library').click();
-  await page.waitForTimeout(400);
-  const cards = await page.locator('#library-grid .card');
-  await expect(cards.first()).toBeVisible();
-  const count = await cards.count();
-  expect(count).toBe(1);   // deduplicación: 1 sola entrada
+  await expect(page.locator('#library-grid .card').first()).toBeVisible();
+  const cards = page.locator('#library-grid .card');
+  const corazonCards = cards.filter({ hasText: 'CorazonR2' });
+  const count = await corazonCards.count();
+  expect(count).toBe(1);   // deduplicación: 1 sola entrada CorazonR2
 
-  // El nombre de la única tarjeta debe ser CorazonR2.
-  const firstText = await cards.first().innerText();
+  // La única tarjeta CorazonR2 debe contener el nombre.
+  const firstText = await corazonCards.first().innerText();
   expect(firstText).toContain('CorazonR2');
 
-  console.log('R2 CorazonR2: %d entrada/s en biblioteca', count);
+  console.log('R2 CorazonR2: %d entrada/s CorazonR2 en biblioteca', count);
 });

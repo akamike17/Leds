@@ -81,4 +81,22 @@ public class LibraryServiceTests : IDisposable
         _svc.SaveCustomDrawing("Dibujo", 2, 2, b);
         Assert.Equal(2, _svc.ListDrawings().Count);
     }
+
+    [Fact]
+    public void Save_same_pixels_different_palette_creates_separate_entry()
+    {
+        // final.md §8: la paleta forma parte de la identidad de contenido. Dos dibujos
+        // con los MISMOS índices de píxel pero distinto color "on" (paleta[0]) son
+        // visualmente distintos y NO deben deduplicarse (data-loss si se colapsan).
+        byte[] pixels = { 1, 1, 1, 0, 0, 1, 1, 1, 1 }; // 3x3
+        var (ok1, _, id1) = _svc.SaveCustomDrawing("CorazonR2", 3, 3, pixels, new() { RgbColor.Red });
+        Assert.True(ok1);
+
+        var (ok2, _, id2) = _svc.SaveCustomDrawing("CorazonR2", 3, 3, pixels, new() { new RgbColor(0, 0, 255) });
+        Assert.True(ok2);
+
+        // Deben coexistir dos entradas distintas (distinto color de encendido).
+        Assert.NotEqual(id1, id2);
+        Assert.Equal(2, _svc.ListDrawings().Count);
+    }
 }

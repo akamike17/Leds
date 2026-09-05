@@ -52,9 +52,11 @@ export class StatusHud {
         this.discover();
     }
 
-    // Diálogo interno Guardar/Descartar/Cancelar para navegación controlada.
-    confirmNavigation(href) {
-        this._pendingNav = href;
+    // Diálogo interno Guardar/Descartar/Cancelar para navegación controlada o
+    // acción diferida (p.ej. abrir el modal de Nuevo proyecto). `after` es un href
+    // (string → navegar) o una función a ejecutar tras guardar/descartar.
+    confirmNavigation(after) {
+        this._pendingAction = after;
         const modal = document.getElementById('unsaved-modal');
         if (modal && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modal).show();
     }
@@ -63,21 +65,26 @@ export class StatusHud {
         const modalEl = document.getElementById('unsaved-modal');
         if (!modalEl) return;
         const close = () => { if (window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide(); };
-        document.getElementById('unsaved-cancel').addEventListener('click', () => { this._pendingNav = null; close(); });
+        const run = (after) => {
+            if (!after) return;
+            if (typeof after === 'function') after();
+            else window.location.href = after;
+        };
+        document.getElementById('unsaved-cancel').addEventListener('click', () => { this._pendingAction = null; close(); });
         document.getElementById('unsaved-discard').addEventListener('click', () => {
-            const href = this._pendingNav; this._pendingNav = null;
+            const after = this._pendingAction; this._pendingAction = null;
             this.state.dirty = false;   // descartar = perder cambios intencionadamente
             close();
-            if (href) window.location.href = href;
+            run(after);
         });
         document.getElementById('unsaved-save').addEventListener('click', async () => {
-            const href = this._pendingNav;
-            // guardar primero; si falla, no navegar
+            const after = this._pendingAction;
+            // guardar primero; si falla, no navegar/actuar
             await this.state.save();
-            if (this.state.dirty) { this._pendingNav = null; close(); return; }
-            this._pendingNav = null;
+            if (this.state.dirty) { this._pendingAction = null; close(); return; }
+            this._pendingAction = null;
             close();
-            if (href) window.location.href = href;
+            run(after);
         });
     }
 

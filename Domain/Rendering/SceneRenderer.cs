@@ -76,9 +76,35 @@ public static class SceneRenderer
         foreach (var ch in t.Text)
         {
             var glyph = font.Get(ch);
+            if (glyph == null && !ReferenceEquals(font, Font5x7Accessor) && Font5x7.HasGlyph(ch))
+            {
+                // FALLBACK (final.md §2.A/B): la fuente activa no tiene glifo para este
+                // carácter (p.ej. 3x5 omite M/W/minúsculas/acentos). Se renderiza el
+                // glifo 5x7 equivalente para que el carácter NO desaparezca en silencio,
+                // avanzando el ancho real 5x7 (5+1). Se mantiene paridad C#↔JS exacta.
+                DrawGlyphWith(fb, Font5x7.Get(ch)!, curX, originY, color, Font5x7.Width, Font5x7.Height);
+                curX += Font5x7.Width + Font5x7.Spacing;
+                continue;
+            }
             if (glyph == null) { curX += font.MeasureGlyph(ch); continue; }
             DrawGlyph(fb, glyph, curX, originY, color, font);
             curX += font.MeasureGlyph(ch);
+        }
+    }
+
+    private static BitmapFontAccessor? Font5x7Accessor =>
+        BitmapFontCatalog.Fonts.TryGetValue("5x7", out var f) ? f : null;
+
+    private static void DrawGlyphWith(FrameBuffer fb, byte[] glyph, int x, int y, RgbColor color, int width, int height)
+    {
+        for (int row = 0; row < height; row++)
+        {
+            byte bits = glyph[row];
+            for (int col = 0; col < width; col++)
+            {
+                if ((bits & (1 << col)) != 0)
+                    fb.SetPixel(x + col, y + row, color);
+            }
         }
     }
 

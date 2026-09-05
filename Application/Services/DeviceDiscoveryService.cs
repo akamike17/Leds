@@ -63,12 +63,20 @@ public sealed class DeviceDiscoveryService
         {
             if (_registered.TryGetValue(key, out var existing))
             {
-                // Colisión de serial: dos dispositivos físicos con el MISMO serial. No se
-                // sobrescribe silenciosamente; se conserva el original y se registra el fallo.
-                _failures.Add(new DiscoveryFailure(
-                    $"Colisión de serial '{key}': ya existe un dispositivo en {existing.Endpoint}; " +
-                    $"el nuevo en {endpoint} fue rechazado."));
-                return false;
+                // REDISCOVERY (final.md §2.F): el mismo serial estable reaparece — p.ej. el
+                // mismo dispositivo físico cambió de IP/endpoint. La identidad lógica es la
+                // MISMA; se actualiza el target y endpoint vivos al nuevo, en lugar de
+                // rechazarlo y conservar un endpoint obsoleto (lo que haría que Send apunte
+                // a una dirección muerta). El serial estable ES la identidad por diseño
+                // (sección 18/21): no hay señal hardware adicional para distinguir un clon
+                // activo simultáneo, así que serial único = rediscovery, no colisión.
+                if (!string.Equals(existing.Endpoint, endpoint, StringComparison.Ordinal))
+                {
+                    _registered[key] = new RegisteredDevice(target, transport, endpoint, key);
+                    return true;
+                }
+                // Mismo serial Y mismo endpoint: ya está registrado; idempotente.
+                return true;
             }
 
             _registered[key] = new RegisteredDevice(target, transport, endpoint, key);

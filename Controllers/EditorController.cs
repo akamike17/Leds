@@ -32,7 +32,9 @@ public class EditorController : Controller
         width = Math.Clamp(width, 1, 256);
         height = Math.Clamp(height, 1, 256);
         var project = _projects.CreateProject(name ?? "Sin título", width, height);
-        await _projects.SaveAsync(project);
+        var result = await _projects.SaveAsync(project);
+        if (!result.Success)
+            return BadRequest(new { success = false, message = "No se pudo crear el proyecto: " + result.Message });
         return RedirectToAction("Index", new { id = project.Id.Value });
     }
 
@@ -81,7 +83,12 @@ public class ProjectsController : Controller
         int w = Math.Clamp(model.Width, 1, 256);
         int h = Math.Clamp(model.Height, 1, 256);
         var project = _projects.CreateProject(model.Name, w, h);
-        await _projects.SaveAsync(project);
+        var result = await _projects.SaveAsync(project);
+        if (!result.Success)
+        {
+            ModelState.AddModelError(string.Empty, "No se pudo crear el proyecto: " + result.Message);
+            return View("New", model);
+        }
         return RedirectToAction("Index", "Editor", new { id = project.Id.Value });
     }
 

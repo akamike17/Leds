@@ -12,27 +12,49 @@ namespace DSLetreros.Tests.Deployment;
 /// </summary>
 public class DeviceDiscoveryServiceTests
 {
-    // ---- Colisión de serial ----
+    // ---- Rediscovery de serial (final.md §2.F) ----
 
     [Fact]
-    public void Register_serial_collision_does_not_silently_overwrite()
+    public async Task Register_same_serial_new_endpoint_is_rediscovery_not_collision()
     {
         var sim = new SimulatorTarget(width: 16, height: 8);
         var svc = new DeviceDiscoveryService(sim);
 
-        var devA = new FakeDeviceChannel("lan", "tcp://10.0.0.1:9000");
-        var devB = new FakeDeviceChannel("lan", "tcp://10.0.0.2:9000");
+        var devA = new FakeDeviceChannel("lan", "tcp://192.168.1.50:9000");
+        var devB = new FakeDeviceChannel("lan", "tcp://192.168.1.72:9000");
 
-        // Registra devA con un serial fijo.
-        bool r1 = svc.Register(new ChannelDisplayTarget(devA), "lan", devA.Endpoint, "COLLIDING-SERIAL");
+        // Primero se descubre el dispositivo con su serial estable.
+        bool r1 = svc.Register(new ChannelDisplayTarget(devA), "lan", devA.Endpoint, "ESP32-001");
         Assert.True(r1);
 
-        // devB con el MISMO serial → debe rechazarse explícitamente (no sobrescribir).
-        bool r2 = svc.Register(new ChannelDisplayTarget(devB), "lan", devB.Endpoint, "COLLIDING-SERIAL");
-        Assert.False(r2);
+        // El MISMO serial reaparece con OTRO endpoint (el dispositivo cambió de IP).
+        // Es rediscovery: misma identidad lógica, endpoint vivo actualizado.
+        bool r2 = svc.Register(new ChannelDisplayTarget(devB), "lan", devB.Endpoint, "ESP32-001");
+        Assert.True(r2);
 
-        // El fallo de colisión queda registrado.
-        Assert.Contains(svc.LastFailures, f => f.Contains("Colisión de serial"));
+        // Resolve por serial devuelve el target HACIA EL NUEVO endpoint (no el obsoleto).
+        var resolved = svc.Resolve("ESP32-001");
+        Assert.NotNull(resolved);
+        // El registro vivo apunta al nuevo endpoint.
+        var all = await svc.ListAsync();
+        var summary = Assert.Single(all, d => d.Serial == "ESP32-001");
+        Assert.Equal(devB.Endpoint, summary.Endpoint);
+    }
+
+    [Fact]
+    public async Task Register_same_serial_same_endpoint_is_idempotent()
+    {
+        var sim = new SimulatorTarget(width: 16, height: 8);
+        var svc = new DeviceDiscoveryService(sim);
+        var dev = new FakeDeviceChannel("lan", "tcp://10.0.0.1:9000");
+
+        Assert.True(svc.Register(new ChannelDisplayTarget(dev), "lan", dev.Endpoint, "ESP-001"));
+        Assert.True(svc.Register(new ChannelDisplayTarget(dev), "lan", dev.Endpoint, "ESP-001"));
+
+        // Un único registro (idempotente), sin fallos de colisión.
+        Assert.Empty(svc.LastFailures);
+        var all = await svc.ListAsync();
+        Assert.Single(all, d => d.Serial == "ESP-001");
     }
 
     [Fact]

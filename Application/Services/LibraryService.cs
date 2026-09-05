@@ -71,14 +71,17 @@ public sealed class LibraryService
         if (trimmedName.Length > MaxNameLength)
             trimmedName = trimmedName[..MaxNameLength];
 
-        // Deduplicación por contenido idéntico (RFLED §21): guardar el mismo dibujo
-        // (mismo nombre + dimensiones + píxeles) NO crea una entrada nueva; devuelve
-        // la existente. Evita la acumulación de "CorazonR2" duplicados en la biblioteca.
+        // Deduplicación por contenido idéntico (RFLED §21 + final.md §8): guardar el mismo
+        // dibujo (mismo nombre + dimensiones + píxeles + PALETA) NO crea una entrada nueva.
+        // La paleta forma parte de la identidad de contenido: dos dibujos con los mismos
+        // índices de píxel pero distinto color "on" (paleta[0]) son visualmente distintos y
+        // NO deben deduplicarse (si no, se perdería el dibujo de color distinto).
         foreach (var existing in ListDrawings())
         {
             if (existing.Name == trimmedName &&
                 existing.Width == width && existing.Height == height &&
-                existing.Pixels.AsSpan().SequenceEqual(pixels))
+                existing.Pixels.AsSpan().SequenceEqual(pixels) &&
+                PalettesEqual(existing.Palette, effectivePalette))
             {
                 return (true, "Dibujo ya estaba en Mi biblioteca.", existing.Id);
             }
@@ -215,6 +218,17 @@ public sealed class LibraryService
             File.Delete(path);
             return true;
         }
+    }
+
+    /// <summary>Compara dos paletas por secuencia de colores (null == vacía).</summary>
+    private static bool PalettesEqual(List<RgbColor>? a, List<RgbColor>? b)
+    {
+        var pa = a ?? new List<RgbColor>();
+        var pb = b ?? new List<RgbColor>();
+        if (pa.Count != pb.Count) return false;
+        for (int i = 0; i < pa.Count; i++)
+            if (pa[i] != pb[i]) return false;
+        return true;
     }
 
     /// <summary>
