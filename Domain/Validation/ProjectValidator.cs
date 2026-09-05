@@ -331,15 +331,24 @@ public static class ProjectValidator
         if (!root.TryGetProperty("pixels", out var pixProp))
             return;
 
-        byte[] data;
+        // RFLED §1.3: `data` debe quedar DEFINITIVAMENTE asignada para que Stryker no
+        // genere un mutante inválido (CS0165 "uso de variable local no asignada") que
+        // lo haga entrar en Safe Mode. El early-return por base64 inválido se expresa
+        // con un flag en lugar de `return` dentro de catch, SIN cambio de semántica.
+        byte[] data = Array.Empty<byte>();
+        bool validBase64 = false;
         try
         {
             data = Convert.FromBase64String(pixProp.GetString() ?? string.Empty);
+            validBase64 = true;
         }
         catch (FormatException)
         {
-            return; // no es base64; el render lo ignorará igualmente
+            // no es base64; el render lo ignorará igualmente
         }
+
+        if (!validBase64)
+            return;
 
         foreach (var b in data)
         {

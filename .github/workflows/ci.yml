@@ -131,10 +131,9 @@ jobs:
         run: dotnet restore DSLetreros.slnx
       - name: Vulnerable packages
         run: dotnet list package --vulnerable --include-transitive
-      - name: npm audit (informational)
-        continue-on-error: true
+      - name: npm audit (high/critical gate — RFLED §24)
         run: |
-          cd tests/e2e && npm ci && npm audit
+          cd tests/e2e && npm ci && npm audit --audit-level=high
 
   static-analysis:
     name: Static analysis (.NET analyzers)

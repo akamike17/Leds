@@ -75,11 +75,12 @@ public sealed class ProjectService
     }
 
     /// <summary>
-    /// Abre un proyecto por ruta de disco ya resuelta (uso interno/tests). Exige
-    /// containment canónico DENTRO de ProjectsRoot (v2.md §6): una ruta exterior
-    /// es rechazada, evitando la regresión de abrir archivos arbitrarios del disco.
+    /// Abre un proyecto por ruta de disco ya resuelta (uso INTERNO/tests). Exige
+    /// containment canónico DENTRO de ProjectsRoot (v2.md §6 / RFLED §15): una ruta
+    /// exterior es rechazada. `internal` reduce la superficie pública: la apertura de
+    /// producción es SÓLO por ProjectId (`OpenByIdAsync`), nunca por ruta arbitraria.
     /// </summary>
-    public async Task<(PersistenceResult, Project?)> OpenAsync(string path, CancellationToken ct = default)
+    internal async Task<(PersistenceResult, Project?)> OpenAsync(string path, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(path))
             return (PersistenceResult.Fail("Ruta vacía."), null);

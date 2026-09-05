@@ -98,32 +98,26 @@ Evidencia vía Playwright real + `getImageData` (píxeles observables), no
 ## Gates finales
 
 - `dotnet build -c Release -warnaserror`: 0 errores, 0 warnings.
-- Tests .NET: **536/536 pass** (estable en 3 corridas).
-- E2E Playwright (49 specs, framebuffer real + coordenadas exactas): **49/49 pass
-  en 3 corridas consecutivas** (sin flakes); incluye la corrección del R2 (order del
-  prompt síncrono, ver FINAL_AUDIT.md §1).
-- Coverage (coverlet): línea **83.41%** (2529/3032), rama **74.57%** (1056/1416).
-- Mutation (Stryker): score **59.58%** (break 55; ver MUTATION-JUSTIFICATION.md).
-- Dependency audit: `dotnet list package --vulnerable` = **0**.
+- Tests .NET: **541/541 pass**.
+- E2E Playwright (50 specs): **50/50 pass × 3 corridas estables** (49 + history-soak).
+- Coverage (coverlet): línea **83.60%** (2539/3037), rama **74.85%** (1060/1416).
+- Mutation (Stryker): score **58.95%** (break 55; ver MUTATION-JUSTIFICATION.md).
+- Dependency audit: dotnet = **0 vulnerable**; `npm audit --audit-level=high` = **0**.
 - Sin errores de consola JS ni HTTP 4xx/5xx inesperados (gate dedicado).
 - Sin botones muertos ni placeholders "se implementará después" en el alcance V1.
 
 ## Pendientes reales (NO verificados)
 
-- **CI remoto (GitHub Actions): PENDIENTE** — el push correctivo debe producir un run
-  GREEN antes del cierre. El CI se reestructuró en jobs independientes (v2.md §2).
-- Hardware físico real (placa LED serie/Ethernet): el simulador (`SimulatorTarget`)
-  y el firmware modelado (`Firmware`) cubren el contrato completo en tests
-  deterministas, pero NO se probó contra un dispositivo físico. Requiere HW
-  (SIMULATOR VERIFIED, HARDWARE NOT VERIFIED).
-- Transports USB/Serial/Wi-Fi reales: los canales LAN/Serial se construyen desde
-  la configuración de Settings y se prueban en loopback TCP/in-memory, no contra
-  un dispositivo real.
+- Hardware físico real (placa LED serie/Ethernet): SIMULATOR VERIFIED, **HARDWARE
+  NOT VERIFIED** (sin dispositivo físico).
+- Transports USB/Serial/Wi-Fi reales: HIL (sockets loopback) + in-memory; la
+  cancelación real de `SerialPort` vía `Task.Run` no garantiza cancelación (RFLED §9).
+- Render parity exhaustiva (§5) y playback drift (§6): PARTIAL — casos clave cubiertos
+  por golden + parity-r5, no el espacio paramétrico completo.
 
-## Commits de la pasada correctiva (v2.md)
+## Commits de la pasada correctiva (RFLED.md)
 
-Ver `FINAL_AUDIT.md` para el detalle de causa raíz y correcciones. El commit
-correctivo de esta pasada consolida: fix R2 (orden de prompt), CI en jobs,
-autosave crash-safe, containment de OpenAsync(path), boundary loopback, cleanup
-(DeploymentService DI / controllers / protocol version / MaxResponseBytes), soak +
-performance, y métricas honestas (mutation/coverage/audit).
+Ver `FINAL_AUDIT.md`. Bugfixes P0/P1 de esta pasada: recovery `.autosave.bak`
+(matriz completa), `manifest.Fonts` eliminado (garantía falsa), `OpenAsync(path)`
+→ internal, npm audit = gate high/critical, compile-error Stryker de
+`ValidateIndexedAssetPixels`, soak real de Undo/Redo (E2E history-soak).

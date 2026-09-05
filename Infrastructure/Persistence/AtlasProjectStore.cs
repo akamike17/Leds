@@ -17,7 +17,9 @@ public sealed class AtlasManifest
     public DateTimeOffset UpdatedAt { get; set; }
     public List<string> Scenes { get; set; } = new();      // nombres de archivo en scenes/
     public List<string> Assets { get; set; } = new();      // nombres de archivo en assets/
-    public List<string> Fonts { get; set; } = new();       // nombres de archivo en fonts/
+    // Fonts: NO SOPORTADO (RFLED §3.1). Las fuentes son built-in hardcodeadas
+    // (BitmapFontCatalog), NO assets de usuario persistibles. Mantener una lista
+    // "Fonts" vacía simulaba una garantía de integridad que no existía.
 
     /// <summary>
     /// Checksum SHA-256 del contenido significativo COMPLETO del proyecto:
@@ -313,7 +315,6 @@ public sealed class AtlasProjectStore
         w.Write(manifest.Canvas);
         foreach (var s in manifest.Scenes.OrderBy(x => x, StringComparer.Ordinal)) WriteStr(s);
         foreach (var a in manifest.Assets.OrderBy(x => x, StringComparer.Ordinal)) WriteStr(a);
-        foreach (var f in manifest.Fonts.OrderBy(x => x, StringComparer.Ordinal)) WriteStr(f);
 
         // 2. project shell canónico (identidad, sin timestamps volátiles)
         WriteStr(shell.Id.Value.ToString("N"));
@@ -385,11 +386,6 @@ public sealed class AtlasProjectStore
                 if (!ProjectPaths.IsSimpleFileName(assetFile))
                     return (PersistenceResult.Fail($"Nombre de asset no permitido: '{assetFile}'."), null);
             }
-            foreach (var fontFile in manifest.Fonts)
-            {
-                if (!ProjectPaths.IsSimpleFileName(fontFile))
-                    return (PersistenceResult.Fail($"Nombre de fuente no permitido: '{fontFile}'."), null);
-            }
 
             var project = projectEl.Deserialize<Project>(AtlasJson.Options)!;
             project = Migrate(project, version);
@@ -430,7 +426,6 @@ public sealed class AtlasProjectStore
                     UpdatedAt = manifest.UpdatedAt,
                     Scenes = manifest.Scenes,
                     Assets = manifest.Assets,
-                    Fonts = manifest.Fonts,
                     Checksum = null,
                 };
                 var actual = ComputeContentChecksum(mantifestForHash, shell!, project);
@@ -450,13 +445,31 @@ public sealed class AtlasProjectStore
         }
     }
 
-    /// <summary>Recuperación LastKnownGood: autosave → backup. Devuelve el recuperado si alguno valida.</summary>
+    /// <summary>
+    /// Recuperación LastKnownGood (matriz §2.2): principal → autosave → autosave.bak
+    /// → backup principal. Devuelve el primero que valide; ninguno → error original.
+    /// </summary>
     private async Task<(PersistenceResult Result, Project? Project)> TryRecoverAsync(string path, string originalError, CancellationToken ct)
     {
         var autoPath = path + AutosaveSuffix;
         if (Directory.Exists(autoPath))
         {
             var r = await OpenCoreAsync(autoPath, ct);
+            if (r.Result.Success)
+            {
+                r.Result.Recovered = true;
+                return r;
+            }
+        }
+
+        // El autosave.sufijo.bak es el backup del AUTOSAVE anterior (conservado cuando
+        // un reemplazo de autosave dejó el nuevo en estado inválido). Antes no se
+        // consultaba (v2/Rev3/RFLED §2.1): se añade como nivel de recovery previo al
+        // backup del principal.
+        var autoBackupPath = autoPath + BackupSuffix;
+        if (Directory.Exists(autoBackupPath))
+        {
+            var r = await OpenCoreAsync(autoBackupPath, ct);
             if (r.Result.Success)
             {
                 r.Result.Recovered = true;

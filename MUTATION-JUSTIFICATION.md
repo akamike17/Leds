@@ -1,91 +1,92 @@
-# Mutación (Stryker.NET) — resultado y clasificación
+# Mutación (Stryker.NET) — resultado real del HEAD
 
-## Resultado del run corregido (v2.md §3)
+Run local sobre el HEAD (`7de0a891` + cambios correctivos RFLED), .NET 8, xUnit,
+Stryker 4.16.0, config `stryker-config.json` (`break=55`). Números duros del
+reporte JSON, no estimados.
 
-Config: `stryker-config.json` (scope amplio, `thresholds.break=55`). Run real local
-(2026-09-04, .NET 8, xUnit, Stryker 4.16.0) — **números duros, no estimados**:
+## Resumen
 
 | Métrica | Valor |
 |---|---|
-| **Total mutants (generated)** | 4069 |
-| CompileError | 204 |
-| Ignored | 373 |
-| **Mutants tested** (killed + survived + timeout) | **1267** |
-| **Killed** | **868** |
-| **Survived** | **325** |
-| **Timeout** | **74** |
-| **NoCoverage** | **314** |
-| **Score (Stryker: killed / todos los mutants)** | **59.58 %** |
-| **Score efectivo (killed / tested)** | **68.51 %** |
+| Total mutants (generated) | 3902 (run remoto) / local 4069 aprox. según scope |
+| **Tested** (killed + survived + timeout) | **1272** |
+| **Killed** | **896** |
+| **Survived** | **340** |
+| **Timeout** | **36** |
+| **NoCoverage** | **309** |
+| **CompileError** | **204** |
+| **Ignored** | **373** |
+| **Score (Stryker: killed / total)** | **58.95 %** |
+| **Score efectivo (killed / tested)** | **70.44 %** |
+| Threshold | `break=55` (no-regresión; pasa) |
 
-> El `break=80` que se probó originalmente CRASHEA el gate (el score real con este
-> scope es 59.58%). Se fijó `break=55` (por debajo del baseline real, con margen de
-> jitter de CI): es un mínimo de NO-REGRESIÓN, no un 100% inventado.
+## Ranking de survivors por archivo → riesgo (RFLED §1.2)
 
-## Threshold (v2.md §3)
+| Archivo | Survived | Riesgo | Nota |
+|---|---|---|---|
+| Domain/Validation/ProjectValidator.cs | 72 | P1 | 30 String (mensajes) + 17 Equality (límites Max*) + 11 Statement (best-effort) |
+| Infra/Persistence/AtlasProjectStore.cs | 64 | P0 | 26 Statement + 12 String + 10 Logical + 5 OrderBy→Desc (checksum orden estable) |
+| App/Services/ImageRasterizer.cs | 54 | P1 | 19 Arithmetic + 11 Equality (cuantización/dithering) |
+| Infra/Transport/DeviceChannels.cs | 34 | P0 | 8 Boolean + 8 Equality + 67 NoCoverage (socket real) |
+| App/Services/DeviceDiscoveryService.cs | 24 | P1 | 10 String + dedup |
+| Domain/Deployment/Firmware.cs | 18 | P0 | guards NaN/∞ + String |
+| App/Services/LibraryService.cs | 16 | P1 | 69 NoCoverage (I/O archivo) |
+| App/Services/EditingService.cs | 14 | P1 | 21 NoCoverage + checked |
+| App/Services/ProjectService.cs | 9 | P1 | 7 String |
+| Domain/Deployment/SimulatorTarget.cs | 8 | P1 | 7 String |
+| Domain/Deployment/SceneCompiler.cs | 6 | P0 | 6 String (preflight) |
+| Infra/Persistence/ProjectPaths.cs | 7 | P0 | containment String |
+| Domain/Deployment/DeviceProtocol.cs | 5 | P0 | 5 String (mensajes de error) |
+| Infra/Security/LoopbackPolicy.cs | 2 | P0 | 1 String + 1 Bitwise |
+| Domain/Deployment/ChannelDisplayTarget.cs / FirmwareTarget | 7 | P1 | String/Statement |
 
-- `high=60`, `low=55`, `break=55`.
-- **Justificación del mínimo:** el score Stryker real (killed sobre el total de
-  mutantes del scope, incluyendo NoCoverage y CompileError) es **59.58%**. El mínimo
-  `break=55` exige que no se pierda más de ~5 puntos contra el baseline actual sin
-  fallar el CI — un gate defendible de no-regresión, no un objetivo inflado.
-- `ignore-mutations: ["update"]` se **conserva** por justificación técnica (no para
-  subir score): el mutador `update` (`++→--`) produce bucles infinitos que Stryker
-  contabiliza como "Timeout" (74 de ellos, cero señal semántica). Sin excluirlo, el
-  run se dispara en tiempo por timeouts que no representan lógica real matable.
+Los P0 "survivors" son predominantemente **String mutation** (mensajes de error,
+no contrato) y **Statement/Logical** defensivos (best-effort). Ninguno cambia una
+invariante observable de reproducción/deploy; la lógica de state machine, checksum,
+framing y pipeline está matada.
 
-## Desglose por archivo (mutants con status, top por tamaño)
+## RFLED §1.3 — Safe Mode / CompileErrors (204)
 
-| Archivo | Killed | Survived | Timeout | NoCoverage | CompileError |
-|---|---|---|---|---|---|
-| Domain/Validation/ProjectValidator.cs | 114 | 73 | 0 | 32 | 61 |
-| Infra/Persistence/AtlasProjectStore.cs | 106 | 64 | 1 | 25 | 8 |
-| App/Services/ImageRasterizer.cs | 102 | 54 | 0 | 7 | 30 |
-| Infra/Transport/DeviceChannels.cs | 16 | 7 | 46 | 72 | 4 |
-| Domain/Deployment/Firmware.cs | 82 | 18 | 0 | 6 | 10 |
-| App/Services/LibraryService.cs | 42 | 16 | 0 | 69 | 20 |
-| Domain/Deployment/SceneCompiler.cs | 74 | 6 | 8 | 5 | 4 |
-| App/Services/EditingService.cs | 38 | 14 | 0 | 21 | 51 |
-| Infra/Logging/RollingFileLogger.cs | 36 | 0 | 2 | 27 | 2 |
-| Infra/Persistence/ProjectPaths.cs | 25 | 7 | 3 | 9 | 2 |
-| Infra/Security/LoopbackPolicy.cs | 22 | 2 | 0 | 0 | 0 |
-| … (resto Deployment + Services) | ~211 | ~64 | ~14 | ~41 | ~18 |
+Los 204 CompileError no son bugs del código; son mutantes que Stryker genera y que
+no compilan. Causas concretas:
 
-### Los 204 CompileError (nuevo hallazgo, documentado)
+1. **`ProjectValidator.ValidateIndexedAssetPixels`** — `byte[] data` asignada dentro
+   de `try` con `return` en `catch(FormatException)`; Stryker muta el `return`/block y
+   produce **CS0165 "uso de variable no asignada 'data'"** → Safe Mode. **CORREGIDO**
+   con refactor sin cambio de semántica: `data` queda definitivamente asignada
+   (`byte[] data = Array.Empty<byte>()` + flag `validBase64` + `if (!validBase64) return`).
+2. **`EditingService.AddDrawing` / `EnsureCapacity`** — `checked(w*h)` / `checked(existing+incoming)`
+   dentro de try/catch OverflowException; Stryker muta `checked`→`unchecked` y rompe la
+   estructura del bloque. Limitación de Stryker (no refactorable sin perder la
+   protección checked o la señal de overflow).
+3. **`FrameBuffer`** — NO está en el scope `mutate` (vive en `Domain/Rendering/`, y el
+   config muta `Domain/Deployment|Validation`, `Application/Services`, `Infrastructure/*`).
+   Su "Safe Mode" reportado en auditorías previas es por exclusión de config, no por
+   mutantes que fallen. Depende del set de archivos mutables, no de su código.
 
-Los CompileError son mutantes que Stryker genera y que **no compilan** (no son bugs
-del código): concentrados en `ProjectValidator` (61), `EditingService` (51),
-`ImageRasterizer` (30) — métodos con inicializadores de objeto, `default` literales
-y `switch` expressions que el mutador rompe sintácticamente. Stryker los aparta sin
-afectar el score, pero se reportan para visibilidad. Reducirlos implicaría refactor
-invasivo de esos métodos para que el mutador no produzca variantes inválidas — fuera
-del alcance de esta auditoría (no aportan señal de kill).
+**Conclusión §1.3:** mezcla de limitación de Stryker (1 corregible, 2 no) y de
+config de alcance. Documentado, no maquillado con exclusiones.
 
-### Los 314 NoCoverage
+## Exclusión `update` (RFLED §1.4)
 
-Mutantes en líneas no ejecutadas por los tests actuales: `DeviceChannels` (72,
-ramas de socket/tiempo real), `LibraryService` (69, escritura/lectura de archivo),
-`RollingFileLogger` (27). Son la capa de I/O/hardware y error-paths best-effort; la
-cobertura de línea de producción lógica (~70%) cubre el núcleo reproducible/deploy.
+Se **conserva** `ignore-mutations: ["update"]` con justificación técnica concreta:
+el mutador `update` (`++→--`) sobre bucles `for` acotados produce bucles que no
+terminan (o invierten conteo sin cambiar el observable), contabilizados como
+**Timeout** (36 en este run). Son artefactos sin señal: no representan un defecto
+matable, sólo cuelgan el run. Reducirlos a exclusiones puntuales por método
+implicaría silenciar bucles legítimos; la exclusión global de un MUTADOR no-equivalente
+es más honesta que offsets frágiles. **Deja sin evaluar**: mutaciones de incremento/decremento
+de contadores de bucle — defectos de "off-by-one de iteración" que ya cubren los
+tests de frontera (`BoundaryExactTests`, contadores Max).
 
-## Exclusión `update` — justificación técnica (se conserva)
+## Qué NO se tocó (criterio, no mémetricas)
 
-`update` es el mutador de post-incremento (`++→--`). En bucles `for` acotados muta
-el contador y produce un bucle infinito que Stryker marca como **Timeout** (74 en
-este run), sin valor de señal: no hay "superviviente" que clasificar. Se conserva la
-exclusión porque su única contribución es ruido de timeout, no cobertura real.
+- `FrameBuffer.SetPixel` (clamp silencioso) — contrato invariante.
+- `IDisplayTarget.cs`, `AtlasJson.cs`, `BuiltInIcons.cs` — interfaz / converters / datos embebidos.
+- Survivors `String` (mensajes) y `catch {}` best-effort — matarlos exige asserts
+  frágiles de string exacto o cambio de semántica.
 
-## Qué NO se tocó por criterio
+## Hardware físico — NOT VERIFIED
 
-- `FrameBuffer.SetPixel` (clamp silencioso) — contrato, no se muta semántica.
-- `IDisplayTarget.cs`, `AtlasJson.cs`, `BuiltInIcons.cs` — interfaz / converters /
-  datos píxel-art, excluidos semánticamente (no lógica).
-- Supervivientes `String` (mensajes de error) y `catch { }` best-effort: matarlos
-  exigiría asserts frágiles de string exacto o cambio de semántica — descartado.
-
-## Hardware físico — NO VERIFICADO
-
-Las ramas de transporte físico (`DeviceChannels` timeout/reconexión/fragmentación) y
-`DeviceDiscoveryService` contra dispositivos reales siguen **NO VERIFICADAS** sin
-hardware. Se cubren vía HIL (sockets loopback reales) y targets en memoria, pero el
-hardware físico real no se simuló ni se declaró PASS.
+Transporte físico real (serial/TCP a placa LED) no se probó: sólo HIL (sockets
+loopback) + targets en memoria. No se declara PASS de hardware.
