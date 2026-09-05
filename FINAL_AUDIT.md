@@ -5,7 +5,8 @@ Auditoría correctiva de ingeniería según `RFLED.md`. Estado al cierre.
 ## SHAs
 
 - SHA inicial: `7de0a89125e8f54379d70f25d32ff5885c045b25`
-- SHA final: (registrado tras commit correctivo final)
+- SHA final: `56c5fc4ea83f6c45f61de8703bd77f155b3a6fed`
+- CI final: **GREEN** — run `33936997917` (conclusión `success`; todos los jobs + gates ✓)
 
 ## Identidad
 
