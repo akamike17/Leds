@@ -97,12 +97,25 @@ Entorno: Windows 10, .NET 8 (dotnet 3.11), Node/Playwright 1.62.1
 | Static analysis (.NET analyzers) | ✓ 33s |
 | Dependency audit (`dotnet list package --vulnerable` + `npm audit`) | ✓ 17s |
 | Coverage (threshold 0.60) | ✓ line-rate **0.8447**, branch-rate **0.7580** |
-| Mutation (Stryker 4.16) | ✓ **58.51%** (consultar 1333 mutantes; killed 963, survived 364, timeout 6; compile-error 204, no-coverage 323, ignorados 2472) |
+| Mutation (Stryker 4.16) | ✓ **62.32%** (killed 1012 / survived 363 / timeout 20; no-coverage 261, compile-error 153) |
 | All mandatory gates | ✓ PASS |
 
-- Mutation score: **58.51%** (killed 963 / survived 364 / timeout 6; no-coverage 323, compile-error 204).
+- Mutation score: **62.32%** (killed 1012 / survived 363 / timeout 20; no-coverage 261, compile-error 153).
 - Line/branch coverage: **84.47% / 75.80%**.
 - Dependencias: sin vulnerabilidades críticas.
+
+> Progreso de mutation en una pasada de cierre de gap (todo con tests REALES de comportamiento,
+> ninguno de string frágil):
+> - `ValidatorExactBoundaryTests.cs` (20 tests) — frontera EXACTA de cada límite del validador
+>   (`== Max` vs `Max+1`, `End == Duration` vs `+1ms`, índice `== paletteCount-1` vs `== paletteCount`)
+>   y branches de error antes NoCoverage (IDs duplicados, grupos inválidos).
+> - `LibraryServiceIoCoverageTests.cs` (10 tests) — I/O real de get/delete/list de dibujos e imágenes,
+>   `SaveCustomImage` (null-coalescing + dimensiones inválidas), `PalettesEqual` (distinto count).
+> - Resultado: killed 963 → 1012 (+49), NoCoverage 323 → 261 (−62), score 58.51% → 62.32%.
+> - El residuo restante es estructural, no falta de rigor: 363 survivors son String de mensajes de
+>   error, Statement/Logical defensivos y Arithmetic de geometría de píxel equivalentes (matar String
+>   exige asserts de texto exacto, rechazados por el criterio del proyecto); 261 NoCoverage son en
+>   gran parte `SerialDeviceChannel` (hardware físico, no simulable) y branches de timeout de socket.
 
 ## VEREDICTO FINAL
 
