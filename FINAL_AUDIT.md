@@ -75,8 +75,8 @@ Auditoría correctiva de ingeniería según `RFLED.md`. Estado al cierre.
 - Tests .NET: **541/541 pass**.
 - E2E Playwright: **50/50 pass × 3 corridas estables** (49 + 1 history-soak).
 - Coverage: línea **83.60%** (2539/3037), rama **74.85%** (1060/1416).
-- Mutation: created 3902, tested 1272, **killed 896, survived 340, timeout 36,
-  no-coverage 309, compile-errors 204, ignored 373, score 58.95%** (break 55).
+- Mutation: created 3902, tested 1288, **killed 931, survived 353, timeout 4,
+  no-coverage 317, compile-errors 242, score 58.26%** (break 55).
 - Dependency audit: dotnet = 0 vulnerable; npm audit high = 0.
 
 ## NO VERIFICADO / BLOCKERS

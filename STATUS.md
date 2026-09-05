@@ -101,7 +101,7 @@ Evidencia vía Playwright real + `getImageData` (píxeles observables), no
 - Tests .NET: **541/541 pass**.
 - E2E Playwright (50 specs): **50/50 pass × 3 corridas estables** (49 + history-soak).
 - Coverage (coverlet): línea **83.60%** (2539/3037), rama **74.85%** (1060/1416).
-- Mutation (Stryker): score **58.95%** (break 55; ver MUTATION-JUSTIFICATION.md).
+- Mutation (Stryker): score **58.26%** (break 55; ver MUTATION-JUSTIFICATION.md).
 - Dependency audit: dotnet = **0 vulnerable**; `npm audit --audit-level=high` = **0**.
 - Sin errores de consola JS ni HTTP 4xx/5xx inesperados (gate dedicado).
 - Sin botones muertos ni placeholders "se implementará después" en el alcance V1.

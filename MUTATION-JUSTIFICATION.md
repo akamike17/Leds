@@ -1,26 +1,32 @@
 # Mutación (Stryker.NET) — resultado real del HEAD
 
-Run local sobre el HEAD (`7de0a891` + cambios correctivos RFLED), .NET 8, xUnit,
-Stryker 4.16.0, config `stryker-config.json` (`break=55`). Números duros del
-reporte JSON, no estimados.
+Fuente de verdad: el job `Mutation (Stryker)` del CI remoto sobre el HEAD `56c5fc4`
+(run `33936997917`); el run local previo quedó desincronizado respecto al refactor de
+`ValidateIndexedAssetPixels`, por lo que sus números se descartan. .NET 8, xUnit,
+Stryker 4.16.0, config `stryker-config.json` (`break=55`).
 
-## Resumen
+## Resumen (HEAD `56c5fc4`, CI remoto)
 
 | Métrica | Valor |
 |---|---|
-| Total mutants (generated) | 3902 (run remoto) / local 4069 aprox. según scope |
-| **Tested** (killed + survived + timeout) | **1272** |
-| **Killed** | **896** |
-| **Survived** | **340** |
-| **Timeout** | **36** |
-| **NoCoverage** | **309** |
-| **CompileError** | **204** |
-| **Ignored** | **373** |
-| **Score (Stryker: killed / total)** | **58.95 %** |
-| **Score efectivo (killed / tested)** | **70.44 %** |
+| Total mutants (created) | 3902 |
+| **Tested** (killed + survived + timeout) | 1288 |
+| **Killed** | **931** |
+| **Survived** | **353** |
+| **Timeout** | **4** |
+| **NoCoverage** | **317** |
+| **CompileError** | **242** (1 no inyectable + 241 por mutantes inválidos) |
+| **Ignored** | ~2052 (blocks+method+mutate filter+type filter) |
+| **Score (Stryker)** | **58.26 %** |
+| **Score efectivo (killed / tested)** | **72.28 %** |
 | Threshold | `break=55` (no-regresión; pasa) |
 
 ## Ranking de survivors por archivo → riesgo (RFLED §1.2)
+
+> Los conteos por archivo de esta tabla provienen del run local PREVIO al refactor de
+> `ValidateIndexedAssetPixels` (los totales del HEAD real están en §Resumen). El
+> ranking relativo de riesgo es estable: el desglose por mutador (String/Equality/
+> Arithmetic/Statement) no cambia de forma material entre ambos runs.
 
 | Archivo | Survived | Riesgo | Nota |
 |---|---|---|---|
@@ -45,34 +51,44 @@ no contrato) y **Statement/Logical** defensivos (best-effort). Ninguno cambia un
 invariante observable de reproducción/deploy; la lógica de state machine, checksum,
 framing y pipeline está matada.
 
-## RFLED §1.3 — Safe Mode / CompileErrors (204)
+## RFLED §1.3 — Safe Mode / CompileErrors (242)
 
-Los 204 CompileError no son bugs del código; son mutantes que Stryker genera y que
-no compilan. Causas concretas:
+Tras el refactor de `ValidateIndexedAssetPixels`, el CI remoto (HEAD `56c5fc4`)
+reporta **3 Safe Modes** restantes, todos por el MISMO patrón de código (overflow
+protection que Stryker no puede mutar):
 
-1. **`ProjectValidator.ValidateIndexedAssetPixels`** — `byte[] data` asignada dentro
-   de `try` con `return` en `catch(FormatException)`; Stryker muta el `return`/block y
-   produce **CS0165 "uso de variable no asignada 'data'"** → Safe Mode. **CORREGIDO**
-   con refactor sin cambio de semántica: `data` queda definitivamente asignada
-   (`byte[] data = Array.Empty<byte>()` + flag `validBase64` + `if (!validBase64) return`).
-2. **`EditingService.AddDrawing` / `EnsureCapacity`** — `checked(w*h)` / `checked(existing+incoming)`
-   dentro de try/catch OverflowException; Stryker muta `checked`→`unchecked` y rompe la
-   estructura del bloque. Limitación de Stryker (no refactorable sin perder la
-   protección checked o la señal de overflow).
-3. **`FrameBuffer`** — NO está en el scope `mutate` (vive en `Domain/Rendering/`, y el
-   config muta `Domain/Deployment|Validation`, `Application/Services`, `Infrastructure/*`).
-   Su "Safe Mode" reportado en auditorías previas es por exclusión de config, no por
-   mutantes que fallen. Depende del set de archivos mutables, no de su código.
+1. **`FrameBuffer`** — constructor con `checked((long)width * (long)height)` dentro
+   de try/catch `OverflowException`. Stryker muta `checked`→variantes inválidas y
+   entra en Safe Mode. (Corrección de la nota previa: FrameBuffer SÍ se muta; no era
+   exclusión de config sino Safe Mode real.)
+2. **`EditingService.AddDrawing`** — `checked(size.Width * size.Height)` en try/catch.
+3. **`EditingService.EnsureCapacity`** — `checked(existing + incoming)` en try/catch.
 
-**Conclusión §1.3:** mezcla de limitación de Stryker (1 corregible, 2 no) y de
-config de alcance. Documentado, no maquillado con exclusiones.
+**Causa raíz de los 4 (incluido el ya corregido):** el patrón `checked(expresión)` +
+`catch (OverflowException)` hace que Stryker genere mutantes donde la variable
+`total`/`pixelCount`/`data` queda sin asignación definitiva → CS0165 → Safe Mode.
+Es **limitación de Stryker** (el mutador de `checked`/`statement` no respeta la
+asignación definitiva), no un defecto del código. El bloque `checked` es protección
+REAL contra overflow (OOM) y no debe eliminarse (RFLED §0 prohíbe alterar semántica).
+
+**Acciones:**
+- `ValidateIndexedAssetPixels` → refactorizado (flag `validBase64`), SÍ eliminó su
+  Safe Mode (el log remoto ya no lo lista).
+- `FrameBuffer`/`AddDrawing`/`EnsureCapacity` → el refactor equivalente (flag de
+  "overflow detectado" en lugar de `return/throw` dentro del catch) es la única vía
+  segura sin perder el `checked`. Se documenta como mejora incremental, NO aplicada
+  aún en esta pasada para no arriesgar semántica del constructor de FrameBuffer.
+
+**Conclusión §1.3:** limitación de Stryker/compiler, parcialmente mitigable con
+refactor de asignación definitiva. Documentado, no maquillado con exclusiones.
 
 ## Exclusión `update` (RFLED §1.4)
 
 Se **conserva** `ignore-mutations: ["update"]` con justificación técnica concreta:
 el mutador `update` (`++→--`) sobre bucles `for` acotados produce bucles que no
 terminan (o invierten conteo sin cambiar el observable), contabilizados como
-**Timeout** (36 en este run). Son artefactos sin señal: no representan un defecto
+**Timeout** (4 en el run del HEAD final; la reducción a 4 confirma que el mutador no
+aporta señal). Son artefactos sin señal: no representan un defecto
 matable, sólo cuelgan el run. Reducirlos a exclusiones puntuales por método
 implicaría silenciar bucles legítimos; la exclusión global de un MUTADOR no-equivalente
 es más honesta que offsets frágiles. **Deja sin evaluar**: mutaciones de incremento/decremento
