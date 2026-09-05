@@ -70,6 +70,15 @@ export class Inspector {
             obj.size.width = Math.max(1, (el.value || '').length * 6 - 1);
             obj.size.height = 7;
         }
+        else if (key === 'font') {
+            // Fuente: 5x7 (6px/char, alto 7) o 3x5 (4px/char, alto 5).
+            obj.fontId = el.value || '5x7';
+            obj.size = obj.size || {};
+            const advance = obj.fontId === '3x5' ? 4 : 6;
+            const height = obj.fontId === '3x5' ? 5 : 7;
+            obj.size.width = Math.max(1, (obj.text || '').length * advance - 1);
+            obj.size.height = height;
+        }
         else if (key === 'color') { this.writeColor(obj, 'color', el.value); }
         else if (key === 'strokeColor') { obj.strokeColor = this.hexRgb(el.value); }
         else if (key === 'fillColor') { obj.fillColor = this.hexRgb(el.value); }
@@ -108,6 +117,7 @@ export class Inspector {
         else if (key === 'width') { el.value = obj.size?.width ?? 1; }
         else if (key === 'height') { el.value = obj.size?.height ?? 1; }
         else if (key === 'text') { el.value = obj.text ?? ''; }
+        else if (key === 'font') { el.value = obj.fontId ?? '5x7'; }
         else if (key === 'color' || key === 'fillColor' || key === 'strokeColor') {
             const c = this.readColor(obj, key);
             el.value = this.rgbHex(c);
@@ -181,6 +191,13 @@ export class Inspector {
         if (obj.kind === 'text') {
             fields.push({ html: `<label class="form-label small mb-0">Texto</label>
                      <textarea class="form-control form-control-sm" rows="2" data-field="text"></textarea>` });
+            fields.push({
+                html: `<label class="form-label small mb-0">Fuente</label>
+                       <select class="form-select form-select-sm" data-field="font">
+                         <option value="5x7">5x7 (estándar)</option>
+                         <option value="3x5">3x5 (compacta)</option>
+                       </select>`,
+            });
             fields.push(this.colorField('color', 'Color', true));
         } else if (obj.kind === 'shape') {
             fields.push(this.colorField('strokeColor', 'Borde', false));

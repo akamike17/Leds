@@ -198,6 +198,7 @@ public static class BitmapFontCatalog
         new Dictionary<string, BitmapFontAccessor>(StringComparer.Ordinal)
         {
             ["5x7"] = new BitmapFontAccessor(Font5x7.Width, Font5x7.Height, Font5x7.Get, Font5x7.MeasureGlyph),
+            ["3x5"] = new BitmapFontAccessor(Font3x5.Width, Font3x5.Height, Font3x5.Get, Font3x5.MeasureGlyph),
         };
 
     public static BitmapFontAccessor Get(string id) =>

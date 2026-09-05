@@ -71,6 +71,19 @@ public sealed class LibraryService
         if (trimmedName.Length > MaxNameLength)
             trimmedName = trimmedName[..MaxNameLength];
 
+        // Deduplicación por contenido idéntico (RFLED §21): guardar el mismo dibujo
+        // (mismo nombre + dimensiones + píxeles) NO crea una entrada nueva; devuelve
+        // la existente. Evita la acumulación de "CorazonR2" duplicados en la biblioteca.
+        foreach (var existing in ListDrawings())
+        {
+            if (existing.Name == trimmedName &&
+                existing.Width == width && existing.Height == height &&
+                existing.Pixels.AsSpan().SequenceEqual(pixels))
+            {
+                return (true, "Dibujo ya estaba en Mi biblioteca.", existing.Id);
+            }
+        }
+
         var asset = new CustomDrawingAsset
         {
             Name = trimmedName,

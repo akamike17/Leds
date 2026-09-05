@@ -53,4 +53,32 @@ public class LibraryServiceTests : IDisposable
         Assert.True(_svc.DeleteDrawing(id!));
         Assert.Empty(_svc.ListDrawings());
     }
+
+    [Fact]
+    public void Save_identical_drawing_deduplicates()
+    {
+        // RFLED §21: guardar dos veces el MISMO dibujo (nombre + dims + píxeles)
+        // NO crea una entrada duplicada; devuelve la existente.
+        byte[] pixels = { 1, 1, 1, 0, 0, 1, 1, 1, 1 }; // 3x3 (forma de corazón)
+        var (ok1, _, id1) = _svc.SaveCustomDrawing("CorazonR2", 3, 3, pixels);
+        Assert.True(ok1);
+        Assert.NotNull(id1);
+
+        var (ok2, msg2, id2) = _svc.SaveCustomDrawing("CorazonR2", 3, 3, pixels);
+        Assert.True(ok2, msg2);
+        Assert.Equal(id1, id2);   // devuelve el EXISTENTE, no uno nuevo
+
+        Assert.Single(_svc.ListDrawings());
+    }
+
+    [Fact]
+    public void Save_same_name_different_content_creates_separate_entry()
+    {
+        // El mismo nombre con contenido DISTINTO sí debe poder coexistir (no sobre-deduplicar).
+        byte[] a = { 1, 0, 0, 1 };
+        byte[] b = { 0, 1, 1, 0 };
+        _svc.SaveCustomDrawing("Dibujo", 2, 2, a);
+        _svc.SaveCustomDrawing("Dibujo", 2, 2, b);
+        Assert.Equal(2, _svc.ListDrawings().Count);
+    }
 }

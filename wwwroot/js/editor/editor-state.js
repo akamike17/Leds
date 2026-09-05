@@ -234,6 +234,11 @@ export class EditorState {
                 this.addTextObject(scene, text, logical);
                 this.render();
             }
+        } else if (this.tools.activeTool === 'icon') {
+            // Icon picker integrado (spec 19): abre el modal y ancla la posición para
+            // insertar el icono elegido en el punto del click, sin salir del editor.
+            this._pendingIconPos = logical;
+            this.openIconPicker();
         } else if (this.tools.activeTool === 'pencil') {
             this.history.captureOnce(this.project);
             this.startDrawingSession(logical, 'pencil');
@@ -656,7 +661,45 @@ export class EditorState {
             });
         });
         document.getElementById('btn-save').addEventListener('click', () => this.save());
+        // Nuevo proyecto (spec 12): modal de matriz → POST /Editor/New → recarga editor.
+        document.getElementById('btn-new').addEventListener('click', () => {
+            const m = document.getElementById('new-modal');
+            if (m && window.bootstrap) bootstrap.Modal.getOrCreateInstance(m).show();
+        });
+        const newMatrix = document.getElementById('new-matrix');
+        if (newMatrix) {
+            newMatrix.addEventListener('change', () => {
+                document.getElementById('new-custom').classList.toggle('d-none', newMatrix.value !== 'custom');
+            });
+        }
+        const newCreate = document.getElementById('btn-new-create');
+        if (newCreate) {
+            newCreate.addEventListener('click', async () => {
+                const name = document.getElementById('new-name').value || 'Sin título';
+                let w = 32, h = 16;
+                const mv = newMatrix.value;
+                if (mv === 'custom') {
+                    w = parseInt(document.getElementById('new-width').value, 10) || 32;
+                    h = parseInt(document.getElementById('new-height').value, 10) || 16;
+                } else if (mv && mv.includes(',')) {
+                    [w, h] = mv.split(',').map(n => parseInt(n, 10));
+                }
+                const form = new FormData();
+                form.append('name', name);
+                form.append('width', String(Math.max(1, Math.min(256, w))));
+                form.append('height', String(Math.max(1, Math.min(256, h))));
+                const res = await fetch('/Editor/New', {
+                    method: 'POST',
+                    headers: { 'RequestVerificationToken': window.__antiforgery?.token || '' },
+                    body: form,
+                });
+                if (res.redirected) window.location.href = res.url;
+                else window.location.href = '/Editor';
+            });
+        }
         document.getElementById('btn-play').addEventListener('click', () => this.togglePlay());
+        document.getElementById('btn-pause')?.addEventListener('click', () => this.pausePlayback());
+        document.getElementById('btn-stop')?.addEventListener('click', () => this.restartPlayback());
         document.getElementById('btn-save-library').addEventListener('click', () => this.saveToLibrary());
         document.getElementById('btn-library').addEventListener('click', () => this.openLibrary());
         document.getElementById('btn-image').addEventListener('click', () => document.getElementById('image-file').click());
@@ -664,6 +707,15 @@ export class EditorState {
             if (e.target.files && e.target.files[0]) this.importImage(e.target.files[0]);
             e.target.value = '';
         });
+        // búsqueda del icon picker integrado (con debounce leve, sin perder foco)
+        const iconSearch = document.getElementById('icon-picker-search');
+        if (iconSearch) {
+            let t = null;
+            iconSearch.addEventListener('input', () => {
+                clearTimeout(t);
+                t = setTimeout(() => this.populateIconPicker(iconSearch.value), 120);
+            });
+        }
         document.querySelectorAll('[data-lib-tab]').forEach(b => {
             b.addEventListener('click', () => this.loadLibraryTab(b.dataset.libTab));
         });
@@ -872,6 +924,85 @@ export class EditorState {
             bootstrap.Modal.getOrCreateInstance(modal).show();
         }
         this.loadLibraryTab('drawings');
+    }
+
+    // ----- icon picker integrado (spec 19) -----
+    openIconPicker() {
+        const modal = document.getElementById('icon-picker-modal');
+        if (modal && window.bootstrap) {
+            bootstrap.Modal.getOrCreateInstance(modal).show();
+        }
+        this.populateIconPicker('');
+    }
+
+    async populateIconPicker(query) {
+        const grid = document.getElementById('icon-picker-grid');
+        if (!grid) return;
+        const res = await fetch('/Library/Icons');
+        const data = await res.json();
+        const icons = data.icons || [];
+        const q = (query || '').trim().toLowerCase();
+        const filtered = !q ? icons : icons.filter(i =>
+            (i.name || '').toLowerCase().includes(q) ||
+            (i.category || '').toLowerCase().includes(q) ||
+            (i.aliases || []).some(a => a.toLowerCase().includes(q)));
+        grid.innerHTML = '';
+        if (filtered.length === 0) {
+            grid.innerHTML = '<div class="col-12 text-muted">Sin resultados para esta búsqueda.</div>';
+            return;
+        }
+        for (const icon of filtered) {
+            grid.appendChild(this.iconPickerCard(icon));
+        }
+    }
+
+    iconPickerCard(icon) {
+        const col = document.createElement('div');
+        col.className = 'col-auto';
+        const w = icon.width, h = icon.height;
+        col.innerHTML = `
+            <div class="card bg-secondary text-light" style="width:96px">
+                <div class="card-body p-2 text-center">
+                    <canvas width="${w}" height="${h}" style="width:56px;height:56px;image-rendering:pixelated;background:#000"></canvas>
+                    <div class="small mt-1 text-truncate" title="${this.esc(icon.name || '')}">${this.esc(icon.name || '')}</div>
+                    <div class="small text-muted">${this.esc(icon.category || '')}</div>
+                </div>
+            </div>`;
+        this.drawAssetPreview(col.querySelector('canvas'), icon);
+        col.querySelector('.card').addEventListener('click', () => {
+            this.insertIconAt(icon, this._pendingIconPos || { x: 0, y: 0 });
+            this._pendingIconPos = null;
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('icon-picker-modal')).hide();
+        });
+        return col;
+    }
+
+    // Inserta un IconObject en una posición concreta (icon picker integrado).
+    insertIconAt(icon, pos) {
+        const scene = this.currentScene();
+        if (!scene) return;
+        this.history.captureOnce(this.project);
+        const assetId = icon.id;
+        this.project.embeddedAssets = this.project.embeddedAssets || {};
+        this.project.embeddedAssets[assetId] = JSON.stringify({
+            width: icon.width, height: icon.height,
+            pixels: icon.pixels,
+            palette: (icon.palette || []).map(c => ({ r: c.r, g: c.g, b: c.b })),
+            ...(icon.transparentIndex != null && icon.transparentIndex >= 0
+                ? { transparentIndex: icon.transparentIndex } : {}),
+        });
+        const obj = {
+            id: this.newId(), kind: 'icon', name: icon.name || 'Icono',
+            position: { x: pos.x, y: pos.y }, size: { width: icon.width, height: icon.height },
+            visible: true, locked: false, brightness: 255,
+            timing: { start: 0, end: scene.duration ?? 5000 }, animations: [],
+            assetId, paletteMode: 0, tint: { r: 255, g: 255, b: 255 },
+        };
+        this.layer().objects.push(obj);
+        this.history.commitPending();
+        this.markDirty();
+        this.render();
+        this.notify(true, `Icono "${icon.name}" insertado`);
     }
 
     loadLibraryTab(tab) {
@@ -1239,5 +1370,20 @@ export class EditorState {
         btn?.setAttribute('aria-pressed', 'true');
         if (this.currentTime <= 0) this.currentTime = 0;
         this.startPlayback();
+    }
+
+    // Pausa SIN resetear el playhead (spec 29): congela en el tiempo actual.
+    pausePlayback() {
+        if (!this._playback) return;
+        this.stopPlayback(false);
+        this.render();
+        this.updateSceneTimeLabel();
+    }
+
+    // Reinicia el playhead a 0 (sin iniciar reproducción).
+    restartPlayback() {
+        this.stopPlayback(true);   // resetea currentTime a 0
+        this.render();
+        this.updateSceneTimeLabel();
     }
 }

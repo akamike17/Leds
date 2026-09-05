@@ -55,6 +55,7 @@ public partial class LibraryController : Controller
             id = i.Id.Value.ToString("N"),
             name = i.Name,
             category = i.Category,
+            aliases = i.Aliases,
             width = i.Width,
             height = i.Height,
             pixels = i.Pixels,

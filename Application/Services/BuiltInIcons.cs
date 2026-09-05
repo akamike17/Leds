@@ -47,6 +47,16 @@ public static class BuiltInIcons
                 new[] { "Coche", "Car", "auto" }),
             Make("person", "Persona", "Personas",
                 new[] { "Persona", "Person", "usuario" }),
+            Make("wrench", "Herramienta", "Herramientas",
+                new[] { "Herramienta", "Wrench", "tool", "llave" }),
+            Make("computer", "Computadora", "Computación",
+                new[] { "Computadora", "Computer", "pc", "ordenador" }),
+            Make("food", "Comida", "Comida",
+                new[] { "Comida", "Food", "comer", "burger" }),
+            Make("music", "Música", "Audio",
+                new[] { "Música", "Music", "nota", "audio" }),
+            Make("dollar", "Dólar", "Dinero",
+                new[] { "Dólar", "Dollar", "dinero", "$", "money" }),
         };
         return icons;
     }
@@ -112,6 +122,16 @@ internal static class IconDefs
             8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34, 36, 39, 40, 41, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52 }),
         ["person"] = (8, 8, new[] {
             19, 20, 21, 27, 29, 35, 36, 37, 43, 45, 50, 51, 52, 53, 54 }),
+        ["wrench"] = (8, 8, new[] {
+            11, 12, 20, 21, 28, 29, 35, 36, 37, 43, 45, 51, 52, 53 }),
+        ["computer"] = (8, 8, new[] {
+            1, 2, 3, 4, 5, 6, 8, 15, 16, 23, 24, 31, 32, 39, 40, 47, 48, 55, 49, 50, 51, 52, 53, 54, 56, 57, 58, 59, 60, 61, 62, 63 }),
+        ["food"] = (8, 8, new[] {
+            9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 23, 26, 31, 34, 40, 42, 49, 50, 51 }),
+        ["music"] = (8, 8, new[] {
+            11, 19, 26, 27, 33, 34, 35, 41, 43, 49, 51 }),
+        ["dollar"] = (8, 8, new[] {
+            11, 18, 19, 20, 21, 22, 27, 34, 35, 36, 37, 43, 49, 50, 51, 52, 53 }),
     };
 
     public static (int w, int h, int[] bits) Get(string id) =>

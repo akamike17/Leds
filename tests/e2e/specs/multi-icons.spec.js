@@ -1,9 +1,9 @@
-// Iconos (spec 14): los 16 iconos incluidos existen con nombre/categoría; se
+// Iconos (spec 14): los iconos incluidos existen con nombre/categoría; se
 // insertan iconos reales (no sólo Corazón) y persisten.
 import { test, expect } from '@playwright/test';
 import { createProject, readFramebuffer } from './framebuffer-utils.js';
 
-test('los 16 iconos existen (Corazón/Estrella/Flechas/Teléfono/Carrito/Engranaje/Wi-Fi) y se insertan', async ({ page }) => {
+test('los 21 iconos incluidos existen (Corazón/Estrella/Flechas/Teléfono/Carrito/Engranaje/Wi-Fi) y se insertan', async ({ page }) => {
   await createProject(page, { name: 'MultiIcons', width: '64', height: '16' });
 
   await page.getByRole('button', { name: 'Biblioteca' }).click();
@@ -11,7 +11,7 @@ test('los 16 iconos existen (Corazón/Estrella/Flechas/Teléfono/Carrito/Engrana
   await page.waitForTimeout(300);
 
   const cards = await page.locator('#library-grid .card').allTextContents();
-  expect(cards.length).toBeGreaterThanOrEqual(16);
+  expect(cards.length).toBeGreaterThanOrEqual(21);
   const names = cards.map(t => t.trim());
   for (const want of ['Corazón', 'Estrella', 'Flecha', 'Teléfono', 'Carrito', 'Engranaje', 'Wi-Fi']) {
     expect(names.some(n => n.toLowerCase().includes(want.toLowerCase()))).toBe(true);

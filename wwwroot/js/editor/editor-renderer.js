@@ -3,6 +3,7 @@
 // Implementa el MISMO pipeline que C#: timing + animaciones (vía animation-evaluator),
 // brightness, clips (wipe), texto, dibujo, formas, icono e imagen indexada.
 import { Font5x7 } from './font5x7.js';
+import { Font3x5 } from './font3x5.js';
 import { evaluate } from './animation-evaluator.js';
 
 function toCss(c, brightness = 1) {
@@ -65,21 +66,24 @@ export class Renderer {
   renderText(t, ox, oy, brightness) {
     if (!t.text) return;
     const ctx = this.ctx;
+    // Fuente por fontId (paridad con BitmapFontCatalog C#): '3x5' compacta, '5x7' default.
+    const font = t.fontId === '3x5' ? Font3x5 : Font5x7;
+    const advance = font.width + font.spacing;
     const x = (t.position?.x ?? 0) + ox;
     const y = (t.position?.y ?? 0) + oy;
     const color = toCss(t.color || { r: 255, g: 255, b: 255 }, brightness);
     let curX = x;
     for (const ch of t.text) {
-      const g = Font5x7.get(ch);
-      if (!g) { curX += 6; continue; }
+      const g = font.get(ch);
+      if (!g) { curX += advance; continue; }
       ctx.fillStyle = color;
-      for (let row = 0; row < 7; row++) {
+      for (let row = 0; row < font.height; row++) {
         const bits = g[row];
-        for (let col = 0; col < 5; col++) {
+        for (let col = 0; col < font.width; col++) {
           if (bits & (1 << col)) ctx.fillRect(curX + col, y + row, 1, 1);
         }
       }
-      curX += 6;
+      curX += advance;
     }
   }
 
