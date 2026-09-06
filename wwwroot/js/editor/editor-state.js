@@ -24,6 +24,8 @@ export class EditorState {
         this.drawingSession = null;
         this.shapeSession = null;
         this._playback = null;
+        this.previewRenderer = null;
+        this.previewModalOpen = false;
     }
 
     async loadProject(projectId) {
@@ -778,16 +780,42 @@ export class EditorState {
         preview.style.width = `${preview.width * scale}px`;
         preview.style.height = `${preview.height * scale}px`;
         this.previewCanvas = preview;
+        this.previewRenderer = this.previewRenderer || new Renderer(preview, preview.getContext('2d'));
+        window.__atlasLastPreviewCanvas = preview;
+        window.__atlasPreviewRendererCount = 1;
+        this.previewRenderer.embeddedAssets = this.project?.embeddedAssets || {};
+        this.previewModalOpen = true;
+        if (!modal.dataset.atlasBound) {
+            modal.addEventListener('hidden.bs.modal', () => {
+                this.previewModalOpen = false;
+                this.previewCanvas = null;
+                this.previewRenderer = null;
+                window.__atlasLastPreviewCanvas = null;
+                window.__atlasPreviewRendererCount = 0;
+                this._compiledPreview = null;
+            });
+            modal.dataset.atlasBound = 'true';
+        }
         if (window.bootstrap) bootstrap.Modal.getOrCreateInstance(modal).show();
         this.renderSimulator();
     }
 
     renderSimulator() {
-        if (!this.previewCanvas || !this.renderer) return;
-        const ctx = this.previewCanvas.getContext('2d');
-        const previewRenderer = new Renderer(this.previewCanvas, ctx);
-        previewRenderer.embeddedAssets = this.project?.embeddedAssets || {};
-        previewRenderer.renderScene(this.currentScene(), this.currentTime);
+        if (!this.previewModalOpen || !this.previewCanvas || !this.previewRenderer || !this.renderer) return;
+        this.previewRenderer.renderScene(this.currentScene(), this.currentTime);
+        // When a simulator package has been received, compare its real frame
+        // endpoint with the editor time instead of silently rerendering JS only.
+        if (!this._compiledPreview && this.currentTime >= 0) {
+            fetch(`/Deploy/SimulatorFrame?timeMs=${encodeURIComponent(this.currentTime)}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(data => {
+                    if (!data?.success) return;
+                    this._compiledPreview = data;
+                    const status = document.getElementById('simulator-parity-status');
+                    if (status) status.textContent = `Frame compilado recibido · ${data.width}×${data.height} · checksum ${data.checksum}`;
+                })
+                .catch(() => { this._compiledPreview = { success: false }; });
+        }
     }
 
     onKeyDown(e) {
