@@ -11,9 +11,11 @@ export class StatusHud {
 
     bind() {
         // Red: indicador online/offline (offline → retry sin perder trabajo).
-        window.addEventListener('online', () => this.setNet(true));
+        window.addEventListener('online', () => this.refreshTargetNet());
         window.addEventListener('offline', () => this.setNet(false));
-        this.setNet(navigator.onLine);
+        // navigator.onLine solo describe la red del PC; no prueba que exista
+        // un ESP32. El estado visible se establece al descubrir targets reales.
+        this.setNet(false);
 
         // Cerrar modificado → aviso nativo (Guardar/Descartar/Cancelar).
         window.addEventListener('beforeunload', (e) => {
@@ -129,13 +131,18 @@ export class StatusHud {
         this.activeTarget = t;
         const el = document.getElementById('stat-target');
         if (el) el.textContent = t ? `Target: ${t.name}` : 'Target: —';
+        this.refreshTargetNet();
+    }
+
+    refreshTargetNet() {
+        this.setNet(Boolean(this.activeTarget && this.activeTarget.transport !== 'simulator' && this.activeTarget.online));
     }
 
     setNet(online) {
         const dot = document.getElementById('net-dot');
         const label = document.getElementById('net-label');
         if (dot) dot.className = 'net-dot ' + (online ? 'bg-success' : 'bg-danger');
-        if (label) label.textContent = online ? 'Conectado' : 'Sin conexión';
+        if (label) label.textContent = online ? 'ESP32 conectado' : 'Sin dispositivo';
     }
 
     setDirty(dirty) {

@@ -140,6 +140,7 @@ export class EditorState {
         if (!this.renderer) return;
         const scene = this.currentScene();
         if (scene) this.renderer.renderScene(scene, this.currentTime);
+        this.renderSimulator();
         this.drawSelectionOverlay();
         this.inspector.render();
         this.updateLibraryButton();
@@ -666,6 +667,9 @@ export class EditorState {
 
     // ----- acciones de UI -----
     bindUi() {
+        document.getElementById('btn-preview')?.addEventListener('click', () => this.openSimulator());
+        document.getElementById('simulator-play')?.addEventListener('click', () => this.togglePlay());
+        document.getElementById('simulator-stop')?.addEventListener('click', () => this.restartPlayback());
         document.querySelectorAll('.tool-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
@@ -761,6 +765,29 @@ export class EditorState {
 
         // teclado: borrar/duplicar/undo/redo/group
         window.addEventListener('keydown', e => this.onKeyDown(e));
+    }
+
+    openSimulator() {
+        const modal = document.getElementById('simulator-modal');
+        const preview = document.getElementById('simulator-canvas');
+        if (!modal || !preview || !this.canvas) return;
+        preview.width = this.canvas.width;
+        preview.height = this.canvas.height;
+        const maxW = Math.max(160, Math.min(window.innerWidth - 120, 960));
+        const scale = Math.max(4, Math.floor(maxW / preview.width));
+        preview.style.width = `${preview.width * scale}px`;
+        preview.style.height = `${preview.height * scale}px`;
+        this.previewCanvas = preview;
+        if (window.bootstrap) bootstrap.Modal.getOrCreateInstance(modal).show();
+        this.renderSimulator();
+    }
+
+    renderSimulator() {
+        if (!this.previewCanvas || !this.renderer) return;
+        const ctx = this.previewCanvas.getContext('2d');
+        const previewRenderer = new Renderer(this.previewCanvas, ctx);
+        previewRenderer.embeddedAssets = this.project?.embeddedAssets || {};
+        previewRenderer.renderScene(this.currentScene(), this.currentTime);
     }
 
     onKeyDown(e) {

@@ -2,6 +2,16 @@ using Microsoft.Extensions.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// La aplicación es local: evita el proveedor EventLog de Windows, que requiere
+// permisos administrativos y convierte errores normales en excepciones durante
+// pruebas o ejecución sin privilegios.
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+// No depender de claves globales de Windows: Atlas es local y el token de
+// antiforgery debe funcionar también sin permisos sobre AppData del usuario.
+builder.Services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(
+    new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+
 // Add services to the container.
 builder.Services.AddControllersWithViews().AddJsonOptions(o =>
 {

@@ -10,6 +10,7 @@
         <button class="btn btn-sm btn-outline-light" id="btn-new" title="Nuevo proyecto">＋ Nuevo</button>
         <button class="btn btn-sm btn-outline-light" id="btn-save" title="Guardar">💾 Guardar</button>
         <button class="btn btn-sm btn-outline-light" id="btn-open" title="Abrir">📂 Abrir</button>
+        <button class="btn btn-sm btn-primary" id="btn-preview" title="Abrir simulador">▶ Simulador</button>
         <span class="ms-2 small text-muted" id="project-name">Sin título</span>
         <button class="btn btn-sm btn-outline-light ms-3 d-none" id="btn-save-library" title="Guardar selección en Mi biblioteca">📚 Guardar en biblioteca</button>
         <button class="btn btn-sm btn-outline-light ms-1" id="btn-library" title="Abrir biblioteca">📚 Biblioteca</button>
@@ -18,7 +19,7 @@
 
         <!-- Target (dispositivo de envío) + envío -->
         <span class="ms-auto d-flex align-items-center gap-2">
-            <label class="small text-muted mb-0" for="device-select">Target:</label>
+            <label class="small text-muted mb-0" for="device-select">Dispositivo:</label>
             <select class="form-select form-select-sm w-auto" id="device-select" aria-label="Dispositivo de envío"></select>
             <button class="btn btn-sm btn-outline-light" id="btn-send" title="Enviar al target">📤 Enviar</button>
         </span>
@@ -81,15 +82,36 @@
     </div>
 </div>
 
+<div class="modal fade" id="simulator-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content simulator-modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">SIMULADOR <span class="text-muted small">Editor = simulador</span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body simulator-stage">
+        <canvas id="simulator-canvas" aria-label="Simulador del letrero LED"></canvas>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <span class="small text-muted">Vista local · no implica ESP32 conectado</span>
+        <div>
+          <button type="button" class="btn btn-outline-light btn-sm" id="simulator-stop">■ Detener</button>
+          <button type="button" class="btn btn-primary btn-sm" id="simulator-play">▶ Reproducir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Barra de estado consolidada (spec 19): cambios, escena/tiempo, selección, target, red, envío -->
 <div class="status-hud bg-dark text-light d-flex align-items-center gap-2 px-2 py-1 border-top border-secondary"
      id="status-hud" role="status" aria-live="polite">
     <span class="small" id="stat-dirty">Sin cambios</span>
     <span class="small text-muted" id="stat-selection">0 seleccionados</span>
     <span class="small text-muted" id="stat-target">Target: —</span>
-    <span class="small ms-auto d-flex align-items-center gap-1" id="stat-net">
+    <span class="small d-flex align-items-center gap-1" id="stat-net">
         <span class="net-dot bg-secondary" id="net-dot" title="Estado de red"></span>
-        <span class="small text-muted" id="net-label">Conectado</span>
+        <span class="small text-muted" id="net-label">Sin dispositivo</span>
     </span>
     <span class="small text-muted" id="stat-send">Sin envío</span>
     <span class="small ms-auto" id="stat-notify" role="status"></span>
